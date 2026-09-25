@@ -17,7 +17,6 @@ local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 
 local Plr = Players.LocalPlayer
-local CurrentTween = nil
 local HITBOX_RANGE = 250
 local DETECT_RANGE = 2000
 
@@ -42,11 +41,6 @@ _G.AttackHeight = 5
 _G.Noclip = false
 _G.InfGeppo = false
 _G.AutoHaki = true
-_G.AutoTPPlayer = false
-_G.AutoRespawn = false
-_G.FPSBoost = false
-_G.ExtendedZoom = false
-_G.AutoBuyFruit = false
 
 -- Anti-AFK
 Plr.Idled:Connect(function()
@@ -57,19 +51,12 @@ end)
 -- Phím '0' để tắt khẩn cấp
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and input.KeyCode == Enum.KeyCode.Zero then
-		if _G.Farm or _G.AutoLevel or _G.AutoBoss or _G.AutoChest or _G.AutoTPPlayer or _G.Spectating or _G.AutoRespawn or _G.AutoBuyFruit then
+		if _G.Farm or _G.AutoLevel or _G.AutoBoss or _G.AutoChest or _G.AutoTPPlayer then
 			_G.Farm = false
 			_G.AutoLevel = false
 			_G.AutoBoss = false
 			_G.AutoChest = false
 			_G.AutoTPPlayer = false
-			_G.Spectating = false
-			_G.AutoRespawn = false
-			_G.AutoBuyFruit = false
-			if _G.ToggleSpectateBtn then
-				_G.ToggleSpectateBtn.Text = "SPECTATE NGƯỜI CHƠI: TẮT"
-				_G.ToggleSpectateBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
-			end
 			if _G.ToggleFarmBtn then
 				_G.ToggleFarmBtn.Text = "AUTO FARM: TẮT"
 				_G.ToggleFarmBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
@@ -160,7 +147,6 @@ local LevelContainer = createContainer()
 local BossContainer = createContainer()
 local VisionContainer = createContainer()
 local PlayerContainer = createContainer()
-PlayerContainer.CanvasSize = UDim2.new(0, 0, 0, 1400)
 local TpContainer = createContainer()
 
 containers = {FarmContainer, LevelContainer, BossContainer, VisionContainer, PlayerContainer, TpContainer}
@@ -480,64 +466,6 @@ ToggleFullBright.MouseButton1Click:Connect(function()
 	ToggleFullBright.BackgroundColor3 = _G.FullBright and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
 end)
 
-local ToggleFPSBoost = Instance.new("TextButton", VisionContainer)
-ToggleFPSBoost.Position = UDim2.new(0.05, 0, 0.23, 0)
-ToggleFPSBoost.Size = UDim2.new(0.9, 0, 0, 32)
-ToggleFPSBoost.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
-ToggleFPSBoost.Text = "FPS BOOST (GIẢM HIỆU ỨNG): TẮT"
-ToggleFPSBoost.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleFPSBoost.Font = Enum.Font.GothamBold
-ToggleFPSBoost.TextSize = 10
-Instance.new("UICorner", ToggleFPSBoost).CornerRadius = UDim.new(0, 8)
-
-ToggleFPSBoost.MouseButton1Click:Connect(function()
-	_G.FPSBoost = not _G.FPSBoost
-	ToggleFPSBoost.Text = _G.FPSBoost and "FPS BOOST (GIẢM HIỆU ỨNG): BẬT" or "FPS BOOST (GIẢM HIỆU ỨNG): TẮT"
-	ToggleFPSBoost.BackgroundColor3 = _G.FPSBoost and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
-	pcall(function()
-		if _G.FPSBoost then
-			Lighting.GlobalShadows = false
-			for _, v in pairs(workspace:GetDescendants()) do
-				if v:IsA("BasePart") then
-					v.Material = Enum.Material.Plastic
-				elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Fire") or v:IsA("Smoke") then
-					v.Enabled = false
-				end
-			end
-		else
-			Lighting.GlobalShadows = true
-			for _, v in pairs(workspace:GetDescendants()) do
-				if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Fire") or v:IsA("Smoke") then
-					v.Enabled = true
-				end
-			end
-		end
-	end)
-end)
-
-local ToggleZoom = Instance.new("TextButton", VisionContainer)
-ToggleZoom.Position = UDim2.new(0.05, 0, 0.33, 0)
-ToggleZoom.Size = UDim2.new(0.9, 0, 0, 32)
-ToggleZoom.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
-ToggleZoom.Text = "MỞ RỘNG GÓC NHÌN (EXTENDED ZOOM): TẮT"
-ToggleZoom.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleZoom.Font = Enum.Font.GothamBold
-ToggleZoom.TextSize = 10
-Instance.new("UICorner", ToggleZoom).CornerRadius = UDim.new(0, 8)
-
-ToggleZoom.MouseButton1Click:Connect(function()
-	_G.ExtendedZoom = not _G.ExtendedZoom
-	ToggleZoom.Text = _G.ExtendedZoom and "MỞ RỘNG GÓC NHÌN (EXTENDED ZOOM): BẬT" or "MỞ RỘNG GÓC NHÌN (EXTENDED ZOOM): TẮT"
-	ToggleZoom.BackgroundColor3 = _G.ExtendedZoom and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
-	pcall(function()
-		if _G.ExtendedZoom then
-			Plr.CameraMaxZoomDistance = 10000
-		else
-			Plr.CameraMaxZoomDistance = 128
-		end
-	end)
-end)
-
 RunService.RenderStepped:Connect(function()
 	pcall(function()
 		if _G.FullBright then
@@ -651,133 +579,6 @@ PlayerListUIList.Padding = UDim.new(0, 4)
 local ToggleTPPlayer = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 0.88, 0), UDim2.new(0.9, 0, 0, 30), "TP ĐẾN NGƯỜI CHƠI: TẮT", Color3.fromRGB(180, 40, 60))
 _G.ToggleTPPlayerBtn = ToggleTPPlayer
 
--- Spectate Player
-local ToggleSpectate = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 0.96, 0), UDim2.new(0.9, 0, 0, 30), "SPECTATE NGƯỜI CHƠI: TẮT", Color3.fromRGB(180, 40, 60))
-_G.Spectating = false
-_G.ToggleSpectateBtn = ToggleSpectate
-
-ToggleSpectate.MouseButton1Click:Connect(function()
-	if not SelectedTargetPlayer then
-		ToggleSpectate.Text = "CHƯA CHỌN NGƯỜI CHƠI!"
-		task.wait(1)
-		ToggleSpectate.Text = _G.Spectating and "SPECTATE NGƯỜI CHƠI: BẬT" or "SPECTATE NGƯỜI CHƠI: TẮT"
-		return
-	end
-	_G.Spectating = not _G.Spectating
-	ToggleSpectate.Text = _G.Spectating and "SPECTATE NGƯỜI CHƠI: BẬT" or "SPECTATE NGƯỜI CHƠI: TẮT"
-	ToggleSpectate.BackgroundColor3 = _G.Spectating and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
-	if not _G.Spectating then
-		local Camera = workspace.CurrentCamera
-		if Camera then
-			Camera.CameraSubject = Plr.Character and Plr.Character:FindFirstChildOfClass("Humanoid") or nil
-			Camera.CameraType = Enum.CameraType.Custom
-		end
-	end
-end)
-
--- Visual Equip / Unequip
-local BtnVisualEquip = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.04, 0), UDim2.new(0.43, 0, 0, 30), "CẦM VŨ KHÍ", Color3.fromRGB(35, 40, 55))
-local BtnVisualUnequip = CreateButton(PlayerContainer, UDim2.new(0.52, 0, 1.04, 0), UDim2.new(0.43, 0, 0, 30), "BỎ VŨ KHÍ", Color3.fromRGB(35, 40, 55))
-
-BtnVisualEquip.MouseButton1Click:Connect(function()
-	pcall(function()
-		local Char = Plr.Character
-		if not Char then return end
-		local Tool = Char:FindFirstChildOfClass("Tool")
-		if not Tool then
-			local Backpack = Plr:FindFirstChild("Backpack")
-			if Backpack then
-				Tool = Backpack:FindFirstChildOfClass("Tool")
-				if Tool then Char.Humanoid:EquipTool(Tool) end
-			end
-		end
-		if Tool then
-			local NetMod = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
-			if NetMod and NetMod:FindFirstChild("RE/VisualEquipped") then
-				NetMod["RE/VisualEquipped"]:FireServer(Tool.Name)
-			end
-		end
-	end)
-end)
-
-BtnVisualUnequip.MouseButton1Click:Connect(function()
-	pcall(function()
-		local Char = Plr.Character
-		if not Char then return end
-		local Tool = Char:FindFirstChildOfClass("Tool")
-		if Tool then
-			local NetMod = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
-			if NetMod and NetMod:FindFirstChild("RE/VisualUnequipped") then
-				NetMod["RE/VisualUnequipped"]:FireServer(Tool.Name)
-			end
-			Char.Humanoid:UnequipTools()
-		end
-	end)
-end)
-
--- Jump Power toggle + slider
-local ToggleJumpPower = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.12, 0), UDim2.new(0.9, 0, 0, 30), "CUSTOM JUMP POWER: TẮT", Color3.fromRGB(180, 40, 60))
-ToggleJumpPower.MouseButton1Click:Connect(function()
-	_G.JumpPowerEnabled = not _G.JumpPowerEnabled
-	ToggleJumpPower.Text = _G.JumpPowerEnabled and "CUSTOM JUMP POWER: BẬT" or "CUSTOM JUMP POWER: TẮT"
-	ToggleJumpPower.BackgroundColor3 = _G.JumpPowerEnabled and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
-end)
-
-local LblJumpPower = Instance.new("TextLabel", PlayerContainer)
-LblJumpPower.Position = UDim2.new(0.05, 0, 1.22, 0)
-LblJumpPower.Size = UDim2.new(0.9, 0, 0, 16)
-LblJumpPower.Text = "Lực nhảy (Jump Power): 50"
-LblJumpPower.TextColor3 = Color3.fromRGB(0, 230, 255)
-LblJumpPower.BackgroundTransparency = 1
-LblJumpPower.Font = Enum.Font.GothamBold
-LblJumpPower.TextSize = 10
-LblJumpPower.TextXAlignment = Enum.TextXAlignment.Left
-
-local JPsliderBg = Instance.new("Frame", PlayerContainer)
-JPsliderBg.Position = UDim2.new(0.05, 0, 1.27, 0)
-JPsliderBg.Size = UDim2.new(0.9, 0, 0, 14)
-JPsliderBg.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
-Instance.new("UICorner", JPsliderBg).CornerRadius = UDim.new(0, 6)
-
-local JPsliderFill = Instance.new("Frame", JPsliderBg)
-JPsliderFill.Size = UDim2.new((50 - 10) / (500 - 10), 0, 1, 0)
-JPsliderFill.BackgroundColor3 = Color3.fromRGB(0, 160, 230)
-Instance.new("UICorner", JPsliderFill).CornerRadius = UDim.new(0, 6)
-
-local JPsliderBtn = Instance.new("TextButton", JPsliderBg)
-JPsliderBtn.Size = UDim2.new(1, 0, 1, 0)
-JPsliderBtn.BackgroundTransparency = 1
-JPsliderBtn.Text = ""
-
--- Auto Respawn
-local ToggleAutoRespawn = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.34, 0), UDim2.new(0.9, 0, 0, 30), "AUTO RESPAWN (HỒI SINH): TẮT", Color3.fromRGB(180, 40, 60))
-ToggleAutoRespawn.MouseButton1Click:Connect(function()
-	_G.AutoRespawn = not _G.AutoRespawn
-	ToggleAutoRespawn.Text = _G.AutoRespawn and "AUTO RESPAWN (HỒI SINH): BẬT" or "AUTO RESPAWN (HỒI SINH): TẮT"
-	ToggleAutoRespawn.BackgroundColor3 = _G.AutoRespawn and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
-end)
-
--- Auto Buy Random Fruit
-local ToggleAutoBuyFruit = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.42, 0), UDim2.new(0.9, 0, 0, 30), "AUTO MUA QUẢ RANDOM: TẮT", Color3.fromRGB(35, 40, 55))
-ToggleAutoBuyFruit.MouseButton1Click:Connect(function()
-	_G.AutoBuyFruit = not _G.AutoBuyFruit
-	ToggleAutoBuyFruit.Text = _G.AutoBuyFruit and "AUTO MUA QUẢ RANDOM: BẬT" or "AUTO MUA QUẢ RANDOM: TẮT"
-	ToggleAutoBuyFruit.BackgroundColor3 = _G.AutoBuyFruit and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(35, 40, 55)
-end)
-
--- Rejoin Server
-local BtnRejoin = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.50, 0), UDim2.new(0.9, 0, 0, 30), "REJOIN SERVER (VÀO LẠI SERVER)", Color3.fromRGB(35, 40, 55))
-BtnRejoin.MouseButton1Click:Connect(function()
-	local ts = game:GetService("TeleportService")
-	local pid = game.PlaceId
-	local jid = game.JobId
-	if jid and jid ~= "" then
-		ts:TeleportToPlaceInstance(pid, jid, Plr)
-	else
-		ts:Teleport(pid, Plr)
-	end
-end)
-
 local PlayerButtons = {}
 local function RefreshPlayerList()
 	for _, btn in pairs(PlayerButtons) do
@@ -851,8 +652,7 @@ local Islands = {
 	{"🌊 Đảo Dưới Biển (Submerged Island)", CFrame.new(10960.4, -2147.2, 9271.5)},
 	{"🌲 Cây Khổng Lồ (Floating Turtle)", CFrame.new(-4495, 715, -10500)},
 	{"🏛️ Cổng Đền (Hydra Island)", CFrame.new(5722, 610, -295)},
-	{"🌋 Đảo Bánh (Cake Land)", CFrame.new(-2022, 71, -12185)},
-	{"🌊 Pháo Đài Trên Biển (Sea Fortress)", CFrame.new(-5015.2, 314.5, -3004.2)}
+	{"🌋 Đảo Bánh (Cake Land)", CFrame.new(-2022, 71, -12185)}
 }
 
 local function ToCFrameDirect(cf)
@@ -1086,19 +886,17 @@ BtnPower.MouseButton1Click:Connect(function() SetWeaponType(2, "[2] POWER") end)
 BtnSword.MouseButton1Click:Connect(function() SetWeaponType(3, "[3] SWORD") end)
 BtnGun.MouseButton1Click:Connect(function() SetWeaponType(4, "[4] GUN") end)
 
-local draggingSlider, draggingWS, draggingHeight, draggingJP = false, false, false, false
+local draggingSlider, draggingWS, draggingHeight = false, false, false
 
 SliderBtn.MouseButton1Down:Connect(function() draggingSlider = true end)
 WSsliderBtn.MouseButton1Down:Connect(function() draggingWS = true end)
 HeightSliderBtn.MouseButton1Down:Connect(function() draggingHeight = true end)
-JPsliderBtn.MouseButton1Down:Connect(function() draggingJP = true end)
 
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		draggingSlider = false
 		draggingWS = false
 		draggingHeight = false
-		draggingJP = false
 	end
 end)
 
@@ -1131,16 +929,6 @@ RunService.RenderStepped:Connect(function()
 		HeightSliderFill.Size = UDim2.new(relX, 0, 1, 0)
 		_G.AttackHeight = math.floor((-5 + relX * (10 - (-5))) * 10) / 10
 		LblHeight.Text = "Độ cao đánh quái (Attack Height): " .. _G.AttackHeight
-	end
-
-	if draggingJP then
-		local mousePos = UserInputService:GetMouseLocation()
-		local absPos = JPsliderBg.AbsolutePosition
-		local absSize = JPsliderBg.AbsoluteSize
-		local relX = math.clamp((mousePos.X - absPos.X) / absSize.X, 0, 1)
-		JPsliderFill.Size = UDim2.new(relX, 0, 1, 0)
-		_G.CustomJumpPower = math.floor(10 + relX * (500 - 10))
-		LblJumpPower.Text = "Lực nhảy (Jump Power): " .. _G.CustomJumpPower
 	end
 
 	pcall(function()
@@ -1202,6 +990,7 @@ local function EquipWeaponByType()
 	return anyTool
 end
 
+local CurrentTween = nil
 local function ToCFrame(cf)
 	if not cf or not Plr.Character then return end
 	local HRP = Plr.Character:FindFirstChild("HumanoidRootPart")
@@ -1229,16 +1018,12 @@ local function FindBestTarget(targetMobName)
 
 	if Enemies and HRP and targetMobName then
 		for _, mob in pairs(Enemies:GetChildren()) do
-			if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") then
-				local mobHum = mob.Humanoid
-				local mobHRP = mob.HumanoidRootPart
-				if mobHum and mobHum.Health > 0 and mobHRP and mobHRP.Parent then
-					if string.find(string.lower(mob.Name), string.lower(targetMobName)) then
-						local dist = (mobHRP.Position - HRP.Position).Magnitude
-						if dist < shortestDist then
-							shortestDist = dist
-							bestTarget = mob
-						end
+			if mob and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") and mob.Humanoid.Health > 0 then
+				if string.find(string.lower(mob.Name), string.lower(targetMobName)) then
+					local dist = (mob.HumanoidRootPart.Position - HRP.Position).Magnitude
+					if dist < shortestDist then
+						shortestDist = dist
+						bestTarget = mob
 					end
 				end
 			end
@@ -1255,16 +1040,12 @@ local function FindBossTarget()
 
 	if Enemies and HRP and SelectedBossName then
 		for _, mob in pairs(Enemies:GetChildren()) do
-			if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") then
-				local mobHum = mob.Humanoid
-				local mobHRP = mob.HumanoidRootPart
-				if mobHum and mobHum.Health > 0 and mobHRP and mobHRP.Parent then
-					if string.find(string.lower(mob.Name), string.lower(SelectedBossName)) then
-						local dist = (mobHRP.Position - HRP.Position).Magnitude
-						if dist < shortestDist then
-							shortestDist = dist
-							bestBoss = mob
-						end
+			if mob and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") and mob.Humanoid.Health > 0 then
+				if string.find(string.lower(mob.Name), string.lower(SelectedBossName)) then
+					local dist = (mob.HumanoidRootPart.Position - HRP.Position).Magnitude
+					if dist < shortestDist then
+						shortestDist = dist
+						bestBoss = mob
 					end
 				end
 			end
@@ -1301,11 +1082,7 @@ local function FastAttackAndBring(targetMobName, isBossMode)
 	local Enemies = workspace:FindFirstChild("Enemies")
 	if Enemies then
 		for _, mob in pairs(Enemies:GetChildren()) do
-			if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") then
-				local mobHum = mob.Humanoid
-				local mobHRP = mob.HumanoidRootPart
-				if not mobHum or mobHum.Health <= 0 or not mobHRP or not mobHRP.Parent then continue end
-
+			if mob and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") and mob.Humanoid.Health > 0 then
 				local matchCondition = false
 				if isBossMode and SelectedBossName and string.find(string.lower(mob.Name), string.lower(SelectedBossName)) then
 					matchCondition = true
@@ -1314,6 +1091,7 @@ local function FastAttackAndBring(targetMobName, isBossMode)
 				end
 
 				if matchCondition then
+					local mobHRP = mob.HumanoidRootPart
 					local dist = (mobHRP.Position - HRP.Position).Magnitude
 
 					if dist <= HITBOX_RANGE then
@@ -1321,7 +1099,7 @@ local function FastAttackAndBring(targetMobName, isBossMode)
 						mobHRP.Size = Vector3.new(60, 60, 60)
 						mobHRP.Transparency = 1
 						mobHRP.CanCollide = false
-						mobHum.PlatformStand = true
+						mob.Humanoid.PlatformStand = true
 					end
 				end
 			end
@@ -1454,12 +1232,6 @@ task.spawn(function()
 				local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
 				local CommF = Remotes and Remotes:FindFirstChild("CommF_")
 				if CommF then CommF:InvokeServer("HasBuso") end
-				-- Them remote TimeSyncEvent de bat Haki
-				local Clock = Remotes and Remotes:FindFirstChild("Clock")
-				local TimeSync = Clock and Clock:FindFirstChild("TimeSyncEvent")
-				if TimeSync then
-					TimeSync:FireServer(os.time())
-				end
 			end
 		end)
 	end
@@ -1502,19 +1274,6 @@ task.spawn(function()
 	end
 end)
 
--- Spectate Player (camera theo doi nguoi choi)
-RunService.RenderStepped:Connect(function()
-	if _G.Spectating and SelectedTargetPlayer then
-		pcall(function()
-			local Camera = workspace.CurrentCamera
-			if Camera and SelectedTargetPlayer.Character and SelectedTargetPlayer.Character:FindFirstChildOfClass("Humanoid") then
-				Camera.CameraType = Enum.CameraType.Custom
-				Camera.CameraSubject = SelectedTargetPlayer.Character:FindFirstChildOfClass("Humanoid")
-			end
-		end)
-	end
-end)
-
 task.spawn(function()
 	while _G.Chay do
 		task.wait(0.1)
@@ -1532,11 +1291,8 @@ task.spawn(function()
 					local TargetMob = FindBestTarget(QMon)
 					local destinationCF = nil
 
-					if TargetMob and TargetMob.Parent and TargetMob:FindFirstChild("HumanoidRootPart") then
-						local mobHRP = TargetMob.HumanoidRootPart
-						if mobHRP and mobHRP.Parent then
-							destinationCF = mobHRP.CFrame * CFrame.new(0, _G.AttackHeight, 0)
-						end
+					if TargetMob and TargetMob:FindFirstChild("HumanoidRootPart") then
+						destinationCF = TargetMob.HumanoidRootPart.CFrame * CFrame.new(0, _G.AttackHeight, 0)
 					elseif BackupCF then
 						destinationCF = BackupCF * CFrame.new(0, _G.AttackHeight, 0)
 					end
@@ -1579,11 +1335,8 @@ task.spawn(function()
 					local TargetMob = FindBestTarget(qMob)
 					local destinationCF = nil
 
-					if TargetMob and TargetMob.Parent and TargetMob:FindFirstChild("HumanoidRootPart") then
-						local mobHRP = TargetMob.HumanoidRootPart
-						if mobHRP and mobHRP.Parent then
-							destinationCF = mobHRP.CFrame * CFrame.new(0, _G.AttackHeight, 0)
-						end
+					if TargetMob and TargetMob:FindFirstChild("HumanoidRootPart") then
+						destinationCF = TargetMob.HumanoidRootPart.CFrame * CFrame.new(0, _G.AttackHeight, 0)
 					elseif bCF then
 						destinationCF = bCF * CFrame.new(0, _G.AttackHeight, 0)
 					end
@@ -1611,11 +1364,8 @@ task.spawn(function()
 				local TargetBoss = FindBossTarget()
 				local destinationCF = nil
 
-				if TargetBoss and TargetBoss.Parent and TargetBoss:FindFirstChild("HumanoidRootPart") then
-					local mobHRP = TargetBoss.HumanoidRootPart
-					if mobHRP and mobHRP.Parent then
-						destinationCF = mobHRP.CFrame * CFrame.new(0, _G.AttackHeight, 0)
-					end
+				if TargetBoss and TargetBoss:FindFirstChild("HumanoidRootPart") then
+					destinationCF = TargetBoss.HumanoidRootPart.CFrame * CFrame.new(0, _G.AttackHeight, 0)
 				elseif _G.BossTargetCF then
 					destinationCF = _G.BossTargetCF * CFrame.new(0, _G.AttackHeight, 0)
 				end
@@ -1631,54 +1381,6 @@ task.spawn(function()
 						LblBossStatus.Text = "Đang tấn công Boss: " .. SelectedBossName
 					end
 				end
-			end)
-		end
-	end
-end)
-
--- Auto Respawn
-local respawnDelay = 0
-task.spawn(function()
-	while _G.Chay do
-		task.wait(1)
-		if _G.AutoRespawn then
-			pcall(function()
-				local Char = Plr.Character
-				if Char then
-					local humanoid = Char:FindFirstChildOfClass("Humanoid")
-					if humanoid and humanoid.Health <= 0 then
-						task.wait(1.5)
-						Plr:LoadCharacter()
-					end
-				end
-			end)
-		end
-	end
-end)
-
--- Auto Buy Random Fruit
-task.spawn(function()
-	while _G.Chay do
-		task.wait(5)
-		if _G.AutoBuyFruit then
-			pcall(function()
-				local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
-				local CommF = Remotes and Remotes:FindFirstChild("CommF_")
-				if CommF then
-					CommF:InvokeServer("BuyRandomFruit")
-				end
-			end)
-		end
-	end
-end)
-
--- Extended Zoom (keep applying)
-task.spawn(function()
-	while _G.Chay do
-		task.wait(2)
-		if _G.ExtendedZoom then
-			pcall(function()
-				Plr.CameraMaxZoomDistance = 10000
 			end)
 		end
 	end
