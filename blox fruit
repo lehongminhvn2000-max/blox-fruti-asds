@@ -1,0 +1,1685 @@
+-- ================================================================= --
+--  BLOX FRUIT ULTIMATE V54 [SUBMERGED ISLAND & TIKI UPDATE]       --
+-- ================================================================= --
+
+if game:GetService("CoreGui"):FindFirstChild("BFHubV54_Universal") then
+	game:GetService("CoreGui").BFHubV54_Universal:Destroy()
+end
+
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+
+local Plr = Players.LocalPlayer
+local CurrentTween = nil
+local HITBOX_RANGE = 250
+local DETECT_RANGE = 2000
+
+-- Cấu hình mặc định
+_G.Farm = false
+_G.AutoLevel = false
+_G.AutoBoss = false
+_G.AutoClick = true
+_G.AutoSkill = false
+_G.AutoChest = false
+_G.WeaponType = 1
+_G.Chay = true
+_G.FlySpeed = 350
+_G.RemoveFog = false
+_G.FullBright = false
+_G.WalkSpeedEnabled = false
+_G.JumpPowerEnabled = false
+_G.WaterWalkEnabled = false
+_G.CustomWalkSpeed = 16
+_G.CustomJumpPower = 50
+_G.AttackHeight = 5
+_G.Noclip = false
+_G.InfGeppo = false
+_G.AutoHaki = true
+_G.AutoTPPlayer = false
+_G.AutoRespawn = false
+_G.FPSBoost = false
+_G.ExtendedZoom = false
+_G.AutoBuyFruit = false
+
+-- Anti-AFK
+Plr.Idled:Connect(function()
+	VirtualUser:CaptureController()
+	VirtualUser:ClickButton2(Vector2.new(0, 0))
+end)
+
+-- Phím '0' để tắt khẩn cấp
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if not gameProcessed and input.KeyCode == Enum.KeyCode.Zero then
+		if _G.Farm or _G.AutoLevel or _G.AutoBoss or _G.AutoChest or _G.AutoTPPlayer or _G.Spectating or _G.AutoRespawn or _G.AutoBuyFruit then
+			_G.Farm = false
+			_G.AutoLevel = false
+			_G.AutoBoss = false
+			_G.AutoChest = false
+			_G.AutoTPPlayer = false
+			_G.Spectating = false
+			_G.AutoRespawn = false
+			_G.AutoBuyFruit = false
+			if _G.ToggleSpectateBtn then
+				_G.ToggleSpectateBtn.Text = "SPECTATE NGƯỜI CHƠI: TẮT"
+				_G.ToggleSpectateBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+			end
+			if _G.ToggleFarmBtn then
+				_G.ToggleFarmBtn.Text = "AUTO FARM: TẮT"
+				_G.ToggleFarmBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+			end
+			if _G.ToggleLevelBtn then
+				_G.ToggleLevelBtn.Text = "AUTO FARM THEO LEVEL: TẮT"
+				_G.ToggleLevelBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+			end
+			if _G.ToggleBossBtn then
+				_G.ToggleBossBtn.Text = "AUTO BOSS: TẮT"
+				_G.ToggleBossBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+			end
+			if _G.ToggleTPPlayerBtn then
+				_G.ToggleTPPlayerBtn.Text = "TP ĐẾN NGƯỜI CHƠI: TẮT"
+				_G.ToggleTPPlayerBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+			end
+		end
+	end
+end)
+
+-- Giao diện chính 6 Tab
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "BFHubV54_Universal"
+Gui.ResetOnSpawn = false
+Gui.Parent = CoreGui
+
+local Frame = Instance.new("Frame", Gui)
+Frame.BackgroundColor3 = Color3.fromRGB(15, 16, 22)
+Frame.Position = UDim2.new(0.05, 0, 0.12, 0)
+Frame.Size = UDim2.new(0, 350, 0, 430)
+Frame.Active = true
+Frame.Draggable = true
+
+local FrameCorner = Instance.new("UICorner", Frame)
+FrameCorner.CornerRadius = UDim.new(0, 12)
+
+local FrameStroke = Instance.new("UIStroke", Frame)
+FrameStroke.Color = Color3.fromRGB(0, 210, 255)
+FrameStroke.Thickness = 1.5
+
+local Title = Instance.new("TextLabel", Frame)
+Title.Size = UDim2.new(1, -40, 0, 28)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "🌍 BLOX FRUIT V54 (SUBMERGED & TIKI UPDATE)"
+Title.TextColor3 = Color3.fromRGB(0, 230, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 8.5
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local Close = Instance.new("TextButton", Frame)
+Close.Position = UDim2.new(1, -28, 0, 4)
+Close.Size = UDim2.new(0, 20, 0, 20)
+Close.BackgroundColor3 = Color3.fromRGB(230, 50, 70)
+Close.Text = "✕"
+Close.TextColor3 = Color3.fromRGB(255, 255, 255)
+Close.Font = Enum.Font.GothamBold
+Close.TextSize = 10
+Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 5)
+
+local tabsConfig = {
+	{name = "⚔️ FARM", x = 0.01, w = 0.16},
+	{name = "📈 LEVEL", x = 0.18, w = 0.17},
+	{name = "👑 BOSS", x = 0.36, w = 0.15},
+	{name = "👁️ VISION", x = 0.52, w = 0.16},
+	{name = "🏃 PLAYER", x = 0.69, w = 0.16},
+	{name = "🗺️ TP", x = 0.86, w = 0.13}
+}
+
+local tabButtons = {}
+local containers = {}
+
+local function createContainer()
+	local sc = Instance.new("ScrollingFrame", Frame)
+	sc.Position = UDim2.new(0, 0, 0.16, 0)
+	sc.Size = UDim2.new(1, 0, 0.83, 0)
+	sc.BackgroundTransparency = 1
+	sc.Visible = false
+	sc.CanvasSize = UDim2.new(0, 0, 0, 750)
+	sc.ScrollBarThickness = 3
+	sc.ScrollBarImageColor3 = Color3.fromRGB(0, 210, 255)
+	return sc
+end
+
+local FarmContainer = createContainer()
+FarmContainer.Visible = true
+local LevelContainer = createContainer()
+local BossContainer = createContainer()
+local VisionContainer = createContainer()
+local PlayerContainer = createContainer()
+PlayerContainer.CanvasSize = UDim2.new(0, 0, 0, 1400)
+local TpContainer = createContainer()
+
+containers = {FarmContainer, LevelContainer, BossContainer, VisionContainer, PlayerContainer, TpContainer}
+
+for i, cfg in ipairs(tabsConfig) do
+	local btn = Instance.new("TextButton", Frame)
+	btn.Position = UDim2.new(cfg.x, 0, 0.09, 0)
+	btn.Size = UDim2.new(cfg.w, 0, 0, 26)
+	btn.BackgroundColor3 = (i == 1) and Color3.fromRGB(0, 160, 230) or Color3.fromRGB(35, 40, 55)
+	btn.Text = cfg.name
+	btn.TextColor3 = (i == 1) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 190, 205)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 8.5
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+	btn.MouseButton1Click:Connect(function()
+		for j, cont in ipairs(containers) do
+			cont.Visible = (j == i)
+			tabButtons[j].BackgroundColor3 = (j == i) and Color3.fromRGB(0, 160, 230) or Color3.fromRGB(35, 40, 55)
+			tabButtons[j].TextColor3 = (j == i) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 190, 205)
+		end
+	end)
+	table.insert(tabButtons, btn)
+end
+
+local function CreateButton(parent, pos, size, text, color)
+	local Btn = Instance.new("TextButton", parent)
+	Btn.Position = pos
+	Btn.Size = size
+	Btn.BackgroundColor3 = color
+	Btn.Text = text
+	Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	Btn.Font = Enum.Font.GothamSemibold
+	Btn.TextSize = 10
+	Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 6)
+	return Btn
+end
+
+-- ==================== TAB 1: FARM THỦ CÔNG ====================
+local ToggleFarm = CreateButton(FarmContainer, UDim2.new(0.05, 0, 0.02, 0), UDim2.new(0.9, 0, 0, 24), "AUTO FARM: TẮT", Color3.fromRGB(180, 40, 60))
+_G.ToggleFarmBtn = ToggleFarm
+
+local ToggleClick = CreateButton(FarmContainer, UDim2.new(0.05, 0, 0.08, 0), UDim2.new(0.9, 0, 0, 22), "AUTO CLICK / FAST ATTACK: BẬT", Color3.fromRGB(40, 180, 100))
+local ToggleSkill = CreateButton(FarmContainer, UDim2.new(0.05, 0, 0.14, 0), UDim2.new(0.9, 0, 0, 22), "AUTO SKILL: TẮT", Color3.fromRGB(35, 40, 55))
+local ToggleChest = CreateButton(FarmContainer, UDim2.new(0.05, 0, 0.20, 0), UDim2.new(0.9, 0, 0, 22), "AUTO NHẶT RƯƠNG (CHEST): TẮT", Color3.fromRGB(180, 40, 60))
+
+ToggleChest.MouseButton1Click:Connect(function()
+	_G.AutoChest = not _G.AutoChest
+	ToggleChest.Text = _G.AutoChest and "AUTO NHẶT RƯƠNG (CHEST): BẬT" or "AUTO NHẶT RƯƠNG (CHEST): TẮT"
+	ToggleChest.BackgroundColor3 = _G.AutoChest and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+local LblSpeed = Instance.new("TextLabel", FarmContainer)
+LblSpeed.Position = UDim2.new(0.05, 0, 0.26, 0)
+LblSpeed.Size = UDim2.new(0.9, 0, 0, 16)
+LblSpeed.Text = "Tốc độ Tween (Speed): 350"
+LblSpeed.TextColor3 = Color3.fromRGB(0, 230, 255)
+LblSpeed.BackgroundTransparency = 1
+LblSpeed.Font = Enum.Font.GothamBold
+LblSpeed.TextSize = 10
+LblSpeed.TextXAlignment = Enum.TextXAlignment.Left
+
+local SliderBg = Instance.new("Frame", FarmContainer)
+SliderBg.Position = UDim2.new(0.05, 0, 0.31, 0)
+SliderBg.Size = UDim2.new(0.9, 0, 0, 12)
+SliderBg.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+Instance.new("UICorner", SliderBg).CornerRadius = UDim.new(0, 6)
+
+local SliderFill = Instance.new("Frame", SliderBg)
+SliderFill.Size = UDim2.new((350-50)/350, 0, 1, 0)
+SliderFill.BackgroundColor3 = Color3.fromRGB(0, 160, 230)
+Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(0, 6)
+
+local SliderBtn = Instance.new("TextButton", SliderBg)
+SliderBtn.Size = UDim2.new(1, 0, 1, 0)
+SliderBtn.BackgroundTransparency = 1
+SliderBtn.Text = ""
+
+local LblHeight = Instance.new("TextLabel", FarmContainer)
+LblHeight.Position = UDim2.new(0.05, 0, 0.37, 0)
+LblHeight.Size = UDim2.new(0.9, 0, 0, 16)
+LblHeight.Text = "Độ cao đánh quái (Attack Height): 5"
+LblHeight.TextColor3 = Color3.fromRGB(0, 230, 255)
+LblHeight.BackgroundTransparency = 1
+LblHeight.Font = Enum.Font.GothamBold
+LblHeight.TextSize = 10
+LblHeight.TextXAlignment = Enum.TextXAlignment.Left
+
+local HeightSliderBg = Instance.new("Frame", FarmContainer)
+HeightSliderBg.Position = UDim2.new(0.05, 0, 0.42, 0)
+HeightSliderBg.Size = UDim2.new(0.9, 0, 0, 12)
+HeightSliderBg.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+Instance.new("UICorner", HeightSliderBg).CornerRadius = UDim.new(0, 6)
+
+local HeightSliderFill = Instance.new("Frame", HeightSliderBg)
+HeightSliderFill.Size = UDim2.new((5 - (-5)) / (10 - (-5)), 0, 1, 0)
+HeightSliderFill.BackgroundColor3 = Color3.fromRGB(0, 160, 230)
+Instance.new("UICorner", HeightSliderFill).CornerRadius = UDim.new(0, 6)
+
+local HeightSliderBtn = Instance.new("TextButton", HeightSliderBg)
+HeightSliderBtn.Size = UDim2.new(1, 0, 1, 0)
+HeightSliderBtn.BackgroundTransparency = 1
+HeightSliderBtn.Text = ""
+
+local LblType = Instance.new("TextLabel", FarmContainer)
+LblType.Position = UDim2.new(0.05, 0, 0.48, 0)
+LblType.Size = UDim2.new(0.9, 0, 0, 16)
+LblType.Text = "Vũ khí: [1] MELEE"
+LblType.TextColor3 = Color3.fromRGB(255, 200, 0)
+LblType.BackgroundTransparency = 1
+LblType.Font = Enum.Font.GothamBold
+LblType.TextSize = 10
+LblType.TextXAlignment = Enum.TextXAlignment.Left
+
+local BtnMelee = CreateButton(FarmContainer, UDim2.new(0.05, 0, 0.52, 0), UDim2.new(0.21, 0, 0, 20), "1. Melee", Color3.fromRGB(0, 160, 230))
+local BtnPower = CreateButton(FarmContainer, UDim2.new(0.28, 0, 0.52, 0), UDim2.new(0.21, 0, 0, 20), "2. Power", Color3.fromRGB(35, 40, 55))
+local BtnSword = CreateButton(FarmContainer, UDim2.new(0.51, 0, 0.52, 0), UDim2.new(0.21, 0, 0, 20), "3. Sword", Color3.fromRGB(35, 40, 55))
+local BtnGun   = CreateButton(FarmContainer, UDim2.new(0.74, 0, 0.52, 0), UDim2.new(0.21, 0, 0, 20), "4. Gun", Color3.fromRGB(35, 40, 55))
+
+local SF = Instance.new("ScrollingFrame", FarmContainer)
+SF.Position = UDim2.new(0.05, 0, 0.58, 0)
+SF.Size = UDim2.new(0.9, 0, 0, 140)
+SF.BackgroundTransparency = 1
+SF.CanvasSize = UDim2.new(0, 0, 0, 1600)
+SF.ScrollBarThickness = 3
+SF.ScrollBarImageColor3 = Color3.fromRGB(0, 210, 255)
+
+local UIList = Instance.new("UIListLayout", SF)
+UIList.Padding = UDim.new(0, 4)
+
+local Status = Instance.new("TextLabel", FarmContainer)
+Status.Position = UDim2.new(0, 10, 0.93, 0)
+Status.Size = UDim2.new(1, -20, 0, 20)
+Status.Text = "Trạng thái: Đã cập nhật Submerged Island & Level quái"
+Status.TextColor3 = Color3.fromRGB(0, 255, 170)
+Status.BackgroundTransparency = 1
+Status.Font = Enum.Font.Gotham
+Status.TextSize = 9
+
+local QName, QMon, QID, BackupCF
+local SelectedBossName = nil
+
+-- ==================== TAB 2: AUTO FARM THEO LEVEL ====================
+local ToggleLevel = CreateButton(LevelContainer, UDim2.new(0.05, 0, 0.03, 0), UDim2.new(0.9, 0, 0, 34), "AUTO FARM THEO LEVEL: TẮT", Color3.fromRGB(180, 40, 60))
+_G.ToggleLevelBtn = ToggleLevel
+
+local LblLevelStatus = Instance.new("TextLabel", LevelContainer)
+LblLevelStatus.Position = UDim2.new(0.05, 0, 0.13, 0)
+LblLevelStatus.Size = UDim2.new(0.9, 0, 0, 50)
+LblLevelStatus.Text = "Trạng thái Level: Đang chờ bật...\n(Bao gồm Submerged Island max lv 2725)"
+LblLevelStatus.TextColor3 = Color3.fromRGB(0, 230, 255)
+LblLevelStatus.BackgroundTransparency = 1
+LblLevelStatus.Font = Enum.Font.GothamBold
+LblLevelStatus.TextSize = 10
+LblLevelStatus.TextXAlignment = Enum.TextXAlignment.Left
+LblLevelStatus.TextWrapped = true
+
+local LevelGuideInfo = Instance.new("TextLabel", LevelContainer)
+LevelGuideInfo.Position = UDim2.new(0.05, 0, 0.28, 0)
+LevelGuideInfo.Size = UDim2.new(0.9, 0, 0, 240)
+LevelGuideInfo.Text = "💡 HƯỚNG DẪN TÍNH NĂNG LEVEL V54:\n- Tự động quét cấp độ nhân vật đến mốc 2725.\n- Cập nhật đủ Sun-kissed Warrior, Isle Champion, Serpent Hunter, Skull Slayer và Đảo dưới biển Submerged Island.\n- Bấm phím '0' trên bàn phím để dừng khẩn cấp."
+LevelGuideInfo.TextColor3 = Color3.fromRGB(180, 190, 205)
+LevelGuideInfo.BackgroundTransparency = 1
+LevelGuideInfo.Font = Enum.Font.Gotham
+LevelGuideInfo.TextSize = 9.5
+LevelGuideInfo.TextXAlignment = Enum.TextXAlignment.Left
+LevelGuideInfo.TextYAlignment = Enum.TextYAlignment.Top
+LevelGuideInfo.TextWrapped = true
+
+ToggleLevel.MouseButton1Click:Connect(function()
+	_G.AutoLevel = not _G.AutoLevel
+	_G.Farm = false 
+	_G.AutoBoss = false 
+	_G.AutoChest = false
+	_G.AutoTPPlayer = false
+
+	ToggleFarm.Text = "AUTO FARM: TẮT"
+	ToggleFarm.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+
+	ToggleLevel.Text = _G.AutoLevel and "AUTO FARM THEO LEVEL: BẬT" or "AUTO FARM THEO LEVEL: TẮT"
+	ToggleLevel.BackgroundColor3 = _G.AutoLevel and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+	if not _G.AutoLevel and CurrentTween then CurrentTween:Cancel() end
+end)
+
+-- ==================== TAB 3: BOSS ====================
+local ToggleBoss = CreateButton(BossContainer, UDim2.new(0.05, 0, 0.02, 0), UDim2.new(0.9, 0, 0, 30), "AUTO BOSS: TẮT", Color3.fromRGB(180, 40, 60))
+_G.ToggleBossBtn = ToggleBoss
+
+local LblBossStatus = Instance.new("TextLabel", BossContainer)
+LblBossStatus.Position = UDim2.new(0.05, 0, 0.1, 0)
+LblBossStatus.Size = UDim2.new(0.9, 0, 0, 20)
+LblBossStatus.Text = "Boss đã chọn: Chưa có"
+LblBossStatus.TextColor3 = Color3.fromRGB(255, 200, 0)
+LblBossStatus.BackgroundTransparency = 1
+LblBossStatus.Font = Enum.Font.GothamBold
+LblBossStatus.TextSize = 10
+LblBossStatus.TextXAlignment = Enum.TextXAlignment.Left
+
+local BossSF = Instance.new("ScrollingFrame", BossContainer)
+BossSF.Position = UDim2.new(0.05, 0, 0.17, 0)
+BossSF.Size = UDim2.new(0.9, 0, 0, 260)
+BossSF.BackgroundTransparency = 1
+BossSF.CanvasSize = UDim2.new(0, 0, 0, 1200)
+BossSF.ScrollBarThickness = 3
+BossSF.ScrollBarImageColor3 = Color3.fromRGB(0, 210, 255)
+
+local BossUIList = Instance.new("UIListLayout", BossSF)
+BossUIList.Padding = UDim.new(0, 4)
+
+local BossListData = {
+	{"Rip_Indra", CFrame.new(-5315, 609, -2724)},
+	{"Cake Queen", CFrame.new(-805.3, 208.7, -11006.8)},
+	{"Captain Elephant", CFrame.new(-13372, 318, -8505)},
+	{"Beautiful Pirate", CFrame.new(5335, 22, -82)},
+	{"Longma", CFrame.new(-10223, 335, -9540)},
+	{"Soul Reaper", CFrame.new(-9506, 172, 6078)},
+	{"Cake Prince", CFrame.new(-2022.0, 71.3, -12185.7)},
+	{"Dough King", CFrame.new(-2022.0, 71.3, -12185.7)},
+	{"Awakened Ice Admiral", CFrame.new(656.3, 23.5, -926.8)},
+	{"Darkbeard", CFrame.new(3755.0, 14.9, -3499.0)},
+	{"Cursed Captain", CFrame.new(921.1, 125.1, 32822.7)},
+	{"Tushita Guard / Mythological", CFrame.new(-13423, 469, -6875)}
+}
+
+local BossButtons = {}
+for _, bData in ipairs(BossListData) do
+	local bName = bData[1]
+	local bPos = bData[2]
+
+	local BBtn = Instance.new("TextButton", BossSF)
+	BBtn.Size = UDim2.new(1, 0, 0, 26)
+	BBtn.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+	BBtn.Text = "  👑 Săn Boss: " .. bName
+	BBtn.TextColor3 = Color3.fromRGB(180, 190, 205)
+	BBtn.Font = Enum.Font.Gotham
+	BBtn.TextSize = 10
+	BBtn.TextXAlignment = Enum.TextXAlignment.Left
+	Instance.new("UICorner", BBtn).CornerRadius = UDim.new(0, 5)
+
+	BBtn.MouseButton1Click:Connect(function()
+		SelectedBossName = bName
+		_G.BossTargetCF = bPos
+		for _, btn in pairs(BossButtons) do
+			btn.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+			btn.TextColor3 = Color3.fromRGB(180, 190, 205)
+		end
+		BBtn.BackgroundColor3 = Color3.fromRGB(0, 160, 230)
+		BBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		LblBossStatus.Text = "Boss đã chọn: " .. bName
+	end)
+	table.insert(BossButtons, BBtn)
+end
+
+-- ==================== TAB 4: VISION (ĐÃ TÍCH HỢP FIX XÓA SƯƠNG MÙ) ====================
+local fogToggled = false
+local savedFogStart = 0
+local savedFogEnd = 0
+local savedAtmosphere = nil
+local savedAtmosphereParent = nil
+
+local ToggleFog = Instance.new("TextButton", VisionContainer)
+ToggleFog.Position = UDim2.new(0.05, 0, 0.03, 0)
+ToggleFog.Size = UDim2.new(0.9, 0, 0, 32)
+ToggleFog.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+ToggleFog.Text = "XÓA SƯƠNG MÙ: TẮT"
+ToggleFog.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleFog.Font = Enum.Font.GothamBold
+ToggleFog.TextSize = 10
+Instance.new("UICorner", ToggleFog).CornerRadius = UDim.new(0, 8)
+
+ToggleFog.MouseButton1Click:Connect(function()
+	if not fogToggled then
+		savedFogStart = Lighting.FogStart
+		savedFogEnd = Lighting.FogEnd
+
+		local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+		if atmosphere then
+			savedAtmosphere = atmosphere
+			savedAtmosphereParent = atmosphere.Parent
+			atmosphere.Parent = nil
+		end
+
+		Lighting.FogStart = 999999
+		Lighting.FogEnd = 999999
+
+		ToggleFog.Text = "XÓA SƯƠNG MÙ: BẬT"
+		ToggleFog.BackgroundColor3 = Color3.fromRGB(40, 180, 100)
+		fogToggled = true
+	else
+		Lighting.FogStart = savedFogStart
+		Lighting.FogEnd = savedFogEnd
+
+		if savedAtmosphere then
+			savedAtmosphere.Parent = savedAtmosphereParent
+			savedAtmosphere = nil
+		end
+
+		ToggleFog.Text = "XÓA SƯƠNG MÙ: TẮT"
+		ToggleFog.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+		fogToggled = false
+	end
+end)
+
+local ToggleFullBright = Instance.new("TextButton", VisionContainer)
+ToggleFullBright.Position = UDim2.new(0.05, 0, 0.13, 0)
+ToggleFullBright.Size = UDim2.new(0.9, 0, 0, 32)
+ToggleFullBright.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+ToggleFullBright.Text = "FULL BRIGHT (SÁNG MỌI THỨ): TẮT"
+ToggleFullBright.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleFullBright.Font = Enum.Font.GothamBold
+ToggleFullBright.TextSize = 10
+Instance.new("UICorner", ToggleFullBright).CornerRadius = UDim.new(0, 8)
+
+ToggleFullBright.MouseButton1Click:Connect(function()
+	_G.FullBright = not _G.FullBright
+	ToggleFullBright.Text = _G.FullBright and "FULL BRIGHT (SÁNG MỌI THỨ): BẬT" or "FULL BRIGHT (SÁNG MỌI THỨ): TẮT"
+	ToggleFullBright.BackgroundColor3 = _G.FullBright and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+local ToggleFPSBoost = Instance.new("TextButton", VisionContainer)
+ToggleFPSBoost.Position = UDim2.new(0.05, 0, 0.23, 0)
+ToggleFPSBoost.Size = UDim2.new(0.9, 0, 0, 32)
+ToggleFPSBoost.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+ToggleFPSBoost.Text = "FPS BOOST (GIẢM HIỆU ỨNG): TẮT"
+ToggleFPSBoost.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleFPSBoost.Font = Enum.Font.GothamBold
+ToggleFPSBoost.TextSize = 10
+Instance.new("UICorner", ToggleFPSBoost).CornerRadius = UDim.new(0, 8)
+
+ToggleFPSBoost.MouseButton1Click:Connect(function()
+	_G.FPSBoost = not _G.FPSBoost
+	ToggleFPSBoost.Text = _G.FPSBoost and "FPS BOOST (GIẢM HIỆU ỨNG): BẬT" or "FPS BOOST (GIẢM HIỆU ỨNG): TẮT"
+	ToggleFPSBoost.BackgroundColor3 = _G.FPSBoost and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+	pcall(function()
+		if _G.FPSBoost then
+			Lighting.GlobalShadows = false
+			for _, v in pairs(workspace:GetDescendants()) do
+				if v:IsA("BasePart") then
+					v.Material = Enum.Material.Plastic
+				elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Fire") or v:IsA("Smoke") then
+					v.Enabled = false
+				end
+			end
+		else
+			Lighting.GlobalShadows = true
+			for _, v in pairs(workspace:GetDescendants()) do
+				if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Fire") or v:IsA("Smoke") then
+					v.Enabled = true
+				end
+			end
+		end
+	end)
+end)
+
+local ToggleZoom = Instance.new("TextButton", VisionContainer)
+ToggleZoom.Position = UDim2.new(0.05, 0, 0.33, 0)
+ToggleZoom.Size = UDim2.new(0.9, 0, 0, 32)
+ToggleZoom.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+ToggleZoom.Text = "MỞ RỘNG GÓC NHÌN (EXTENDED ZOOM): TẮT"
+ToggleZoom.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleZoom.Font = Enum.Font.GothamBold
+ToggleZoom.TextSize = 10
+Instance.new("UICorner", ToggleZoom).CornerRadius = UDim.new(0, 8)
+
+ToggleZoom.MouseButton1Click:Connect(function()
+	_G.ExtendedZoom = not _G.ExtendedZoom
+	ToggleZoom.Text = _G.ExtendedZoom and "MỞ RỘNG GÓC NHÌN (EXTENDED ZOOM): BẬT" or "MỞ RỘNG GÓC NHÌN (EXTENDED ZOOM): TẮT"
+	ToggleZoom.BackgroundColor3 = _G.ExtendedZoom and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+	pcall(function()
+		if _G.ExtendedZoom then
+			Plr.CameraMaxZoomDistance = 10000
+		else
+			Plr.CameraMaxZoomDistance = 128
+		end
+	end)
+end)
+
+RunService.RenderStepped:Connect(function()
+	pcall(function()
+		if _G.FullBright then
+			Lighting.Brightness = 2
+			Lighting.ClockTime = 14
+			Lighting.GlobalShadows = false
+			Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+		else
+			Lighting.Brightness = 1
+			Lighting.GlobalShadows = true
+			Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+		end
+	end)
+end)
+
+-- ==================== TAB 5: PLAYER ====================
+local ToggleWalkSpeed = Instance.new("TextButton", PlayerContainer)
+ToggleWalkSpeed.Position = UDim2.new(0.05, 0, 0.03, 0)
+ToggleWalkSpeed.Size = UDim2.new(0.9, 0, 0, 30)
+ToggleWalkSpeed.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+ToggleWalkSpeed.Text = "CUSTOM WALK SPEED: TẮT"
+ToggleWalkSpeed.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleWalkSpeed.Font = Enum.Font.GothamBold
+ToggleWalkSpeed.TextSize = 10
+Instance.new("UICorner", ToggleWalkSpeed).CornerRadius = UDim.new(0, 8)
+
+ToggleWalkSpeed.MouseButton1Click:Connect(function()
+	_G.WalkSpeedEnabled = not _G.WalkSpeedEnabled
+	ToggleWalkSpeed.Text = _G.WalkSpeedEnabled and "CUSTOM WALK SPEED: BẬT" or "CUSTOM WALK SPEED: TẮT"
+	ToggleWalkSpeed.BackgroundColor3 = _G.WalkSpeedEnabled and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+local LblWalkSpeed = Instance.new("TextLabel", PlayerContainer)
+LblWalkSpeed.Position = UDim2.new(0.05, 0, 0.13, 0)
+LblWalkSpeed.Size = UDim2.new(0.9, 0, 0, 16)
+LblWalkSpeed.Text = "Tốc độ chạy (WalkSpeed): 16"
+LblWalkSpeed.TextColor3 = Color3.fromRGB(0, 230, 255)
+LblWalkSpeed.BackgroundTransparency = 1
+LblWalkSpeed.Font = Enum.Font.GothamBold
+LblWalkSpeed.TextSize = 10
+LblWalkSpeed.TextXAlignment = Enum.TextXAlignment.Left
+
+local WSsliderBg = Instance.new("Frame", PlayerContainer)
+WSsliderBg.Position = UDim2.new(0.05, 0, 0.18, 0)
+WSsliderBg.Size = UDim2.new(0.9, 0, 0, 14)
+WSsliderBg.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+Instance.new("UICorner", WSsliderBg).CornerRadius = UDim.new(0, 6)
+
+local WSsliderFill = Instance.new("Frame", WSsliderBg)
+WSsliderFill.Size = UDim2.new(16/300, 0, 1, 0)
+WSsliderFill.BackgroundColor3 = Color3.fromRGB(0, 160, 230)
+Instance.new("UICorner", WSsliderFill).CornerRadius = UDim.new(0, 6)
+
+local WSsliderBtn = Instance.new("TextButton", WSsliderBg)
+WSsliderBtn.Size = UDim2.new(1, 0, 1, 0)
+WSsliderBtn.BackgroundTransparency = 1
+WSsliderBtn.Text = ""
+
+local ToggleWaterWalk = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 0.25, 0), UDim2.new(0.9, 0, 0, 30), "ĐI TRÊN MẶT NƯỚC (WATER WALK): TẮT", Color3.fromRGB(180, 40, 60))
+ToggleWaterWalk.MouseButton1Click:Connect(function()
+	_G.WaterWalkEnabled = not _G.WaterWalkEnabled
+	ToggleWaterWalk.Text = _G.WaterWalkEnabled and "ĐI TRÊN MẶT NƯỚC (WATER WALK): BẬT" or "ĐI TRÊN MẶT NƯỚC (WATER WALK): TẮT"
+	ToggleWaterWalk.BackgroundColor3 = _G.WaterWalkEnabled and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+local ToggleNoclip = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 0.34, 0), UDim2.new(0.9, 0, 0, 30), "NOCLIP (XUYÊN TƯỜNG): TẮT", Color3.fromRGB(180, 40, 60))
+ToggleNoclip.MouseButton1Click:Connect(function()
+	_G.Noclip = not _G.Noclip
+	ToggleNoclip.Text = _G.Noclip and "NOCLIP (XUYÊN TƯỜNG): BẬT" or "NOCLIP (XUYÊN TƯỜNG): TẮT"
+	ToggleNoclip.BackgroundColor3 = _G.Noclip and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+local ToggleInfGeppo = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 0.43, 0), UDim2.new(0.9, 0, 0, 30), "NHẢY TRÊN KHÔNG VÔ HẠN: TẮT", Color3.fromRGB(180, 40, 60))
+ToggleInfGeppo.MouseButton1Click:Connect(function()
+	_G.InfGeppo = not _G.InfGeppo
+	ToggleInfGeppo.Text = _G.InfGeppo and "NHẢY TRÊN KHÔNG VÔ HẠN: BẬT" or "NHẢY TRÊN KHÔNG VÔ HẠN: TẮT"
+	ToggleInfGeppo.BackgroundColor3 = _G.InfGeppo and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+local ToggleAutoHaki = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 0.52, 0), UDim2.new(0.9, 0, 0, 30), "AUTO BÚSO (HAKI VŨ TRANG): BẬT", Color3.fromRGB(40, 180, 100))
+ToggleAutoHaki.MouseButton1Click:Connect(function()
+	_G.AutoHaki = not _G.AutoHaki
+	ToggleAutoHaki.Text = _G.AutoHaki and "AUTO BÚSO (HAKI VŨ TRANG): BẬT" or "AUTO BÚSO (HAKI VŨ TRANG): TẮT"
+	ToggleAutoHaki.BackgroundColor3 = _G.AutoHaki and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+-- ==================== CHỨC NĂNG TP ĐẾN NGƯỜI CHƠI ====================
+local SelectedTargetPlayer = nil
+
+local LblPlayerTP = Instance.new("TextLabel", PlayerContainer)
+LblPlayerTP.Position = UDim2.new(0.05, 0, 0.62, 0)
+LblPlayerTP.Size = UDim2.new(0.9, 0, 0, 16)
+LblPlayerTP.Text = "Chọn người chơi để TP:"
+LblPlayerTP.TextColor3 = Color3.fromRGB(0, 230, 255)
+LblPlayerTP.BackgroundTransparency = 1
+LblPlayerTP.Font = Enum.Font.GothamBold
+LblPlayerTP.TextSize = 10
+LblPlayerTP.TextXAlignment = Enum.TextXAlignment.Left
+
+local PlayerListSF = Instance.new("ScrollingFrame", PlayerContainer)
+PlayerListSF.Position = UDim2.new(0.05, 0, 0.67, 0)
+PlayerListSF.Size = UDim2.new(0.9, 0, 0, 90)
+PlayerListSF.BackgroundTransparency = 1
+PlayerListSF.CanvasSize = UDim2.new(0, 0, 0, 0)
+PlayerListSF.ScrollBarThickness = 3
+PlayerListSF.ScrollBarImageColor3 = Color3.fromRGB(0, 210, 255)
+
+local PlayerListUIList = Instance.new("UIListLayout", PlayerListSF)
+PlayerListUIList.Padding = UDim.new(0, 4)
+
+local ToggleTPPlayer = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 0.88, 0), UDim2.new(0.9, 0, 0, 30), "TP ĐẾN NGƯỜI CHƠI: TẮT", Color3.fromRGB(180, 40, 60))
+_G.ToggleTPPlayerBtn = ToggleTPPlayer
+
+-- Spectate Player
+local ToggleSpectate = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 0.96, 0), UDim2.new(0.9, 0, 0, 30), "SPECTATE NGƯỜI CHƠI: TẮT", Color3.fromRGB(180, 40, 60))
+_G.Spectating = false
+_G.ToggleSpectateBtn = ToggleSpectate
+
+ToggleSpectate.MouseButton1Click:Connect(function()
+	if not SelectedTargetPlayer then
+		ToggleSpectate.Text = "CHƯA CHỌN NGƯỜI CHƠI!"
+		task.wait(1)
+		ToggleSpectate.Text = _G.Spectating and "SPECTATE NGƯỜI CHƠI: BẬT" or "SPECTATE NGƯỜI CHƠI: TẮT"
+		return
+	end
+	_G.Spectating = not _G.Spectating
+	ToggleSpectate.Text = _G.Spectating and "SPECTATE NGƯỜI CHƠI: BẬT" or "SPECTATE NGƯỜI CHƠI: TẮT"
+	ToggleSpectate.BackgroundColor3 = _G.Spectating and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+	if not _G.Spectating then
+		local Camera = workspace.CurrentCamera
+		if Camera then
+			Camera.CameraSubject = Plr.Character and Plr.Character:FindFirstChildOfClass("Humanoid") or nil
+			Camera.CameraType = Enum.CameraType.Custom
+		end
+	end
+end)
+
+-- Visual Equip / Unequip
+local BtnVisualEquip = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.04, 0), UDim2.new(0.43, 0, 0, 30), "CẦM VŨ KHÍ", Color3.fromRGB(35, 40, 55))
+local BtnVisualUnequip = CreateButton(PlayerContainer, UDim2.new(0.52, 0, 1.04, 0), UDim2.new(0.43, 0, 0, 30), "BỎ VŨ KHÍ", Color3.fromRGB(35, 40, 55))
+
+BtnVisualEquip.MouseButton1Click:Connect(function()
+	pcall(function()
+		local Char = Plr.Character
+		if not Char then return end
+		local Tool = Char:FindFirstChildOfClass("Tool")
+		if not Tool then
+			local Backpack = Plr:FindFirstChild("Backpack")
+			if Backpack then
+				Tool = Backpack:FindFirstChildOfClass("Tool")
+				if Tool then Char.Humanoid:EquipTool(Tool) end
+			end
+		end
+		if Tool then
+			local NetMod = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
+			if NetMod and NetMod:FindFirstChild("RE/VisualEquipped") then
+				NetMod["RE/VisualEquipped"]:FireServer(Tool.Name)
+			end
+		end
+	end)
+end)
+
+BtnVisualUnequip.MouseButton1Click:Connect(function()
+	pcall(function()
+		local Char = Plr.Character
+		if not Char then return end
+		local Tool = Char:FindFirstChildOfClass("Tool")
+		if Tool then
+			local NetMod = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
+			if NetMod and NetMod:FindFirstChild("RE/VisualUnequipped") then
+				NetMod["RE/VisualUnequipped"]:FireServer(Tool.Name)
+			end
+			Char.Humanoid:UnequipTools()
+		end
+	end)
+end)
+
+-- Jump Power toggle + slider
+local ToggleJumpPower = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.12, 0), UDim2.new(0.9, 0, 0, 30), "CUSTOM JUMP POWER: TẮT", Color3.fromRGB(180, 40, 60))
+ToggleJumpPower.MouseButton1Click:Connect(function()
+	_G.JumpPowerEnabled = not _G.JumpPowerEnabled
+	ToggleJumpPower.Text = _G.JumpPowerEnabled and "CUSTOM JUMP POWER: BẬT" or "CUSTOM JUMP POWER: TẮT"
+	ToggleJumpPower.BackgroundColor3 = _G.JumpPowerEnabled and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+local LblJumpPower = Instance.new("TextLabel", PlayerContainer)
+LblJumpPower.Position = UDim2.new(0.05, 0, 1.22, 0)
+LblJumpPower.Size = UDim2.new(0.9, 0, 0, 16)
+LblJumpPower.Text = "Lực nhảy (Jump Power): 50"
+LblJumpPower.TextColor3 = Color3.fromRGB(0, 230, 255)
+LblJumpPower.BackgroundTransparency = 1
+LblJumpPower.Font = Enum.Font.GothamBold
+LblJumpPower.TextSize = 10
+LblJumpPower.TextXAlignment = Enum.TextXAlignment.Left
+
+local JPsliderBg = Instance.new("Frame", PlayerContainer)
+JPsliderBg.Position = UDim2.new(0.05, 0, 1.27, 0)
+JPsliderBg.Size = UDim2.new(0.9, 0, 0, 14)
+JPsliderBg.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+Instance.new("UICorner", JPsliderBg).CornerRadius = UDim.new(0, 6)
+
+local JPsliderFill = Instance.new("Frame", JPsliderBg)
+JPsliderFill.Size = UDim2.new((50 - 10) / (500 - 10), 0, 1, 0)
+JPsliderFill.BackgroundColor3 = Color3.fromRGB(0, 160, 230)
+Instance.new("UICorner", JPsliderFill).CornerRadius = UDim.new(0, 6)
+
+local JPsliderBtn = Instance.new("TextButton", JPsliderBg)
+JPsliderBtn.Size = UDim2.new(1, 0, 1, 0)
+JPsliderBtn.BackgroundTransparency = 1
+JPsliderBtn.Text = ""
+
+-- Auto Respawn
+local ToggleAutoRespawn = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.34, 0), UDim2.new(0.9, 0, 0, 30), "AUTO RESPAWN (HỒI SINH): TẮT", Color3.fromRGB(180, 40, 60))
+ToggleAutoRespawn.MouseButton1Click:Connect(function()
+	_G.AutoRespawn = not _G.AutoRespawn
+	ToggleAutoRespawn.Text = _G.AutoRespawn and "AUTO RESPAWN (HỒI SINH): BẬT" or "AUTO RESPAWN (HỒI SINH): TẮT"
+	ToggleAutoRespawn.BackgroundColor3 = _G.AutoRespawn and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+-- Auto Buy Random Fruit
+local ToggleAutoBuyFruit = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.42, 0), UDim2.new(0.9, 0, 0, 30), "AUTO MUA QUẢ RANDOM: TẮT", Color3.fromRGB(35, 40, 55))
+ToggleAutoBuyFruit.MouseButton1Click:Connect(function()
+	_G.AutoBuyFruit = not _G.AutoBuyFruit
+	ToggleAutoBuyFruit.Text = _G.AutoBuyFruit and "AUTO MUA QUẢ RANDOM: BẬT" or "AUTO MUA QUẢ RANDOM: TẮT"
+	ToggleAutoBuyFruit.BackgroundColor3 = _G.AutoBuyFruit and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(35, 40, 55)
+end)
+
+-- Rejoin Server
+local BtnRejoin = CreateButton(PlayerContainer, UDim2.new(0.05, 0, 1.50, 0), UDim2.new(0.9, 0, 0, 30), "REJOIN SERVER (VÀO LẠI SERVER)", Color3.fromRGB(35, 40, 55))
+BtnRejoin.MouseButton1Click:Connect(function()
+	local ts = game:GetService("TeleportService")
+	local pid = game.PlaceId
+	local jid = game.JobId
+	if jid and jid ~= "" then
+		ts:TeleportToPlaceInstance(pid, jid, Plr)
+	else
+		ts:Teleport(pid, Plr)
+	end
+end)
+
+local PlayerButtons = {}
+local function RefreshPlayerList()
+	for _, btn in pairs(PlayerButtons) do
+		if btn then btn:Destroy() end
+	end
+	PlayerButtons = {}
+
+	local pCount = 0
+	for _, p in pairs(Players:GetPlayers()) do
+		if p ~= Plr then
+			pCount = pCount + 1
+			local pBtn = Instance.new("TextButton", PlayerListSF)
+			pBtn.Size = UDim2.new(1, 0, 0, 24)
+			pBtn.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+			pBtn.Text = "  👤 " .. p.Name
+			pBtn.TextColor3 = Color3.fromRGB(180, 190, 205)
+			pBtn.Font = Enum.Font.Gotham
+			pBtn.TextSize = 10
+			pBtn.TextXAlignment = Enum.TextXAlignment.Left
+			Instance.new("UICorner", pBtn).CornerRadius = UDim.new(0, 5)
+
+			pBtn.MouseButton1Click:Connect(function()
+				SelectedTargetPlayer = p
+				for _, btn in pairs(PlayerButtons) do
+					btn.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+					btn.TextColor3 = Color3.fromRGB(180, 190, 205)
+				end
+				pBtn.BackgroundColor3 = Color3.fromRGB(0, 160, 230)
+				pBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+			end)
+			table.insert(PlayerButtons, pBtn)
+		end
+	end
+	PlayerListSF.CanvasSize = UDim2.new(0, 0, 0, pCount * 28)
+end
+
+RefreshPlayerList()
+Players.PlayerAdded:Connect(RefreshPlayerList)
+Players.PlayerRemoving:Connect(RefreshPlayerList)
+
+ToggleTPPlayer.MouseButton1Click:Connect(function()
+	if not SelectedTargetPlayer then
+		ToggleTPPlayer.Text = "CHƯA CHỌN NGƯỜI CHƠI!"
+		task.wait(1)
+		ToggleTPPlayer.Text = _G.AutoTPPlayer and "TP ĐẾN NGƯỜI CHƠI: BẬT" or "TP ĐẾN NGƯỜI CHƠI: TẮT"
+		return
+	end
+	_G.AutoTPPlayer = not _G.AutoTPPlayer
+	ToggleTPPlayer.Text = _G.AutoTPPlayer and "TP ĐẾN NGƯỜI CHƠI: BẬT" or "TP ĐẾN NGƯỜI CHƠI: TẮT"
+	ToggleTPPlayer.BackgroundColor3 = _G.AutoTPPlayer and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+	if not _G.AutoTPPlayer and CurrentTween then CurrentTween:Cancel() end
+end)
+
+-- ==================== TAB 6: TELEPORT ĐẢO ====================
+local TpSF = Instance.new("ScrollingFrame", TpContainer)
+TpSF.Position = UDim2.new(0.05, 0, 0.03, 0)
+TpSF.Size = UDim2.new(0.9, 0, 0, 320)
+TpSF.BackgroundTransparency = 1
+TpSF.CanvasSize = UDim2.new(0, 0, 0, 600)
+TpSF.ScrollBarThickness = 3
+TpSF.ScrollBarImageColor3 = Color3.fromRGB(0, 210, 255)
+
+local TpUIList = Instance.new("UIListLayout", TpSF)
+TpUIList.Padding = UDim.new(0, 5)
+
+local Islands = {
+	{"🏝️ Lâu Đài Biển (Mansion - Sea 3)", CFrame.new(-12463, 374, -7552)},
+	{"🏰 Lâu Đài Rồng (Haunted Castle)", CFrame.new(-9515, 142, 5535)},
+	{"🌴 Đảo Tiki (Tiki Outpost)", CFrame.new(-16250, 14, 1050)},
+	{"🤿 NPC Tàu Ngầm Xuống Biển", CFrame.new(-16270.1, 25.3, 1371.1)},
+	{"🌊 Đảo Dưới Biển (Submerged Island)", CFrame.new(10960.4, -2147.2, 9271.5)},
+	{"🌲 Cây Khổng Lồ (Floating Turtle)", CFrame.new(-4495, 715, -10500)},
+	{"🏛️ Cổng Đền (Hydra Island)", CFrame.new(5722, 610, -295)},
+	{"🌋 Đảo Bánh (Cake Land)", CFrame.new(-2022, 71, -12185)},
+	{"🌊 Pháo Đài Trên Biển (Sea Fortress)", CFrame.new(-5015.2, 314.5, -3004.2)}
+}
+
+local function ToCFrameDirect(cf)
+	if not Plr.Character or not Plr.Character:FindFirstChild("HumanoidRootPart") then return end
+	Plr.Character.HumanoidRootPart.CFrame = cf
+end
+
+for _, isl in ipairs(Islands) do
+	local tpBtn = Instance.new("TextButton", TpSF)
+	tpBtn.Size = UDim2.new(1, 0, 0, 30)
+	tpBtn.BackgroundColor3 = Color3.fromRGB(35, 40, 55)
+	tpBtn.Text = isl[1]
+	tpBtn.TextColor3 = Color3.fromRGB(0, 230, 255)
+	tpBtn.Font = Enum.Font.GothamBold
+	tpBtn.TextSize = 10
+	Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 6)
+
+	tpBtn.MouseButton1Click:Connect(function()
+		ToCFrameDirect(isl[2])
+	end)
+end
+
+-- ==================== DANH SÁCH BÃI & LEVEL CẬP NHẬT MỚI ====================
+local Sea3Positions = {
+	["Pirate Millionaire"] = CFrame.new(-741, 124, 5637),
+	["Pistol Billionaire"] = CFrame.new(-56, 153, 6069),
+	["Stone"] = CFrame.new(-1189, 102, 6919),
+	["Island Boy"] = CFrame.new(-16912.9, 127.3, -224.9),
+	["Isle Outlaw"] = CFrame.new(-16306.5, 137.3, -140.8),
+	["Isle Champion"] = CFrame.new(-16784.8, 137.3, 1144.9),
+	["Sun-kissed Warrior"] = CFrame.new(-16225.2, 137.3, 1028.1),
+	["Serpent Hunter"] = CFrame.new(-16531.4, 112.5, 1671.4),
+	["Skull Slayer"] = CFrame.new(-16975.1, 109.5, 1671.3),
+	["Reef Bandit"] = CFrame.new(10960.4, -2147.2, 9271.5),
+	["Coral Pirate"] = CFrame.new(10794.0, -2031.2, 9348.2),
+	["Sea Chanter"] = CFrame.new(10587.0, -2018.3, 10221.1),
+	["High Disciple"] = CFrame.new(9808.8, -1926.0, 9662.9),
+	["Grand Devotee"] = CFrame.new(9539.0, -1928.2, 9776.8),
+	["Marine Commodore"] = CFrame.new(2597, 190, -7282),
+	["Marine Rear Admiral"] = CFrame.new(3725, 168, -7033),
+	["Fishman Raider"] = CFrame.new(-10283, 384, -8501),
+	["Fishman Captain"] = CFrame.new(-10768, 331, -8905),
+	["Forest Pirate"] = CFrame.new(-13232, 428, -7755),
+	["Mythological Pirate"] = CFrame.new(-13423, 469, -6875),
+	["Dragon Crew Warrior"] = CFrame.new(4499, 1187, 901),
+	["Dragon Crew Archer"] = CFrame.new(6693, 541, 444),
+	["Hydra Enforcer"] = CFrame.new(4695, 1063, 142),
+	["Venomous Assailant"] = CFrame.new(4565, 1133, 947),
+	["Hydra Leader"] = CFrame.new(5803, 1063, -75),
+	["Jungle Pirate"] = CFrame.new(-12114, 331, -10805),
+	["Musketeer Pirate"] = CFrame.new(-13458, 391, -9859),
+	["Reborn Skeleton"] = CFrame.new(-8746, 142, 6276),
+	["Living Zombie"] = CFrame.new(-10166, 138, 5960),
+	["Demonic Soul"] = CFrame.new(-9500, 172, 6170),
+	["Possessed Mummy"] = CFrame.new(-9574, 5, 6204),
+	["Peanut Scout"] = CFrame.new(-2151.8, 122.5, -10360.6),
+	["Peanut President"] = CFrame.new(-2151.8, 122.5, -10360.6),
+	["Ice Cream Chef"] = CFrame.new(-805.3, 208.7, -11006.8),
+	["Ice Cream Commander"] = CFrame.new(-805.3, 208.7, -11006.8),
+	["Cookie Crafter"] = CFrame.new(-2272.1, 90.3, -12155.9),
+	["Cake Guard"] = CFrame.new(-1452.6, 92.7, -12507.2),
+	["Baking Staff"] = CFrame.new(-1813.9, 92.1, -12886.3),
+	["Head Baker"] = CFrame.new(-2322.8, 53.5, -13022.8),
+	["Cocoa Warrior"] = CFrame.new(5.8, 77.2, -12167.9),
+	["Chocolate Bar Battler"] = CFrame.new(614.5, 80.6, -12582.2),
+	["Sweet Thief"] = CFrame.new(71.6, 77.3, -12636.8),
+	["Candy Rebel"] = CFrame.new(133.7, 77.3, -12877.4),
+	["Candy Pirate"] = CFrame.new(-1366.1, 83.8, -14711.2),
+	["Snow Demon"] = CFrame.new(-904.1, 89.1, -14664.9)
+}
+
+local LevelQuests = {
+	{min = 2701, max = 9999, name = "SubmergedQuest2", mob = "Grand Devotee", id = 2},
+	{min = 2700, max = 2700, name = "SubmergedQuest2", mob = "High Disciple", id = 1},
+	{min = 2650, max = 2699, name = "SubmergedQuest1", mob = "Sea Chanter", id = 2},
+	{min = 2625, max = 2649, name = "SubmergedQuest1", mob = "Coral Pirate", id = 1},
+	{min = 2600, max = 2624, name = "SubmergedQuest0", mob = "Reef Bandit", id = 1},
+	{min = 2575, max = 2599, name = "TikiQuest3", mob = "Skull Slayer", id = 2},
+	{min = 2550, max = 2574, name = "TikiQuest3", mob = "Serpent Hunter", id = 1},
+	{min = 2525, max = 2549, name = "TikiQuest2", mob = "Isle Champion", id = 2},
+	{min = 2500, max = 2524, name = "TikiQuest2", mob = "Sun-kissed Warrior", id = 1},
+	{min = 2475, max = 2499, name = "TikiQuest1", mob = "Island Boy", id = 2},
+	{min = 2450, max = 2474, name = "TikiQuest1", mob = "Isle Outlaw", id = 1},
+	{min = 2425, max = 2449, name = "SnowMountainQuest1", mob = "Snow Demon", id = 2},
+	{min = 2400, max = 2424, name = "SnowMountainQuest1", mob = "Candy Pirate", id = 1},
+	{min = 2375, max = 2399, name = "CandylandQuest2", mob = "Candy Rebel", id = 2},
+	{min = 2350, max = 2374, name = "CandylandQuest2", mob = "Sweet Thief", id = 1},
+	{min = 2325, max = 2349, name = "CandylandQuest1", mob = "Chocolate Bar Battler", id = 2},
+	{min = 2300, max = 2324, name = "CandylandQuest1", mob = "Cocoa Warrior", id = 1},
+	{min = 2275, max = 2299, name = "CakeQuest2", mob = "Head Baker", id = 2},
+	{min = 2250, max = 2274, name = "CakeQuest2", mob = "Baking Staff", id = 1},
+	{min = 2225, max = 2249, name = "CakeQuest1", mob = "Cake Guard", id = 2},
+	{min = 2200, max = 2224, name = "CakeQuest1", mob = "Cookie Crafter", id = 1},
+	{min = 2150, max = 2199, name = "SeaOfTreartsIceCreamQuest2", mob = "Ice Cream Commander", id = 2},
+	{min = 2125, max = 2149, name = "SeaOfTreartsIceCreamQuest1", mob = "Ice Cream Chef", id = 1},
+	{min = 2100, max = 2124, name = "SeaOfTreartsPeanutQuest2", mob = "Peanut President", id = 1},
+	{min = 2075, max = 2099, name = "SeaOfTreartsPeanutQuest1", mob = "Peanut Scout", id = 1},
+	{min = 2050, max = 2074, name = "HauntedQuest2", mob = "Possessed Mummy", id = 2},
+	{min = 2025, max = 2049, name = "HauntedQuest2", mob = "Demonic Soul", id = 1},
+	{min = 2000, max = 2024, name = "HauntedQuest1", mob = "Living Zombie", id = 2},
+	{min = 1975, max = 1999, name = "HauntedQuest1", mob = "Reborn Skeleton", id = 1},
+	{min = 1950, max = 1974, name = "MansionQuest", mob = "Musketeer Pirate", id = 2},
+	{min = 1925, max = 1949, name = "MansionQuest", mob = "Jungle Pirate", id = 1},
+	{min = 1900, max = 1924, name = "HydraQuest2", mob = "Hydra Leader", id = 1},
+	{min = 1875, max = 1899, name = "HydraQuest1", mob = "Venomous Assailant", id = 2},
+	{min = 1850, max = 1874, name = "HydraQuest1", mob = "Hydra Enforcer", id = 1},
+	{min = 1825, max = 1849, name = "TurtleQuest2", mob = "Dragon Crew Archer", id = 2},
+	{min = 1800, max = 1824, name = "TurtleQuest2", mob = "Dragon Crew Warrior", id = 1},
+	{min = 1775, max = 1799, name = "TurtleQuest1", mob = "Mythological Pirate", id = 2},
+	{min = 1750, max = 1774, name = "TurtleQuest1", mob = "Forest Pirate", id = 1},
+	{min = 1725, max = 1749, name = "WaterQuest1", mob = "Fishman Captain", id = 2},
+	{min = 1700, max = 1724, name = "WaterQuest1", mob = "Fishman Raider", id = 1},
+	{min = 1675, max = 1699, name = "MarineQuest2", mob = "Kilo Admiral", id = 1},
+	{min = 1650, max = 1674, name = "MarineQuest1", mob = "Marine Rear Admiral", id = 2},
+	{min = 1625, max = 1649, name = "MarineQuest1", mob = "Marine Commodore", id = 1},
+	{min = 1600, max = 1624, name = "IslandQuest", mob = "Stone", id = 1},
+	{min = 1575, max = 1599, name = "PiratePortQuest", mob = "Pistol Billionaire", id = 2},
+	{min = 1,    max = 1574, name = "PiratePortQuest", mob = "Pirate Millionaire", id = 1}
+}
+
+local function GetQuestByLevel()
+	local myLevel = 1500
+	pcall(function()
+		if Plr.Data and Plr.Data:FindFirstChild("Level") then
+			myLevel = Plr.Data.Level.Value
+		elseif Plr:FindFirstChild("Data") and Plr.Data:FindFirstChild("Level") then
+			myLevel = Plr.Data.Level.Value
+		end
+	end)
+
+	for _, q in ipairs(LevelQuests) do
+		if myLevel >= q.min and myLevel <= q.max then
+			return q.name, q.mob, q.id, myLevel
+		end
+	end
+	return "PiratePortQuest", "Pirate Millionaire", 1, myLevel
+end
+
+local DataUI = {
+	{"PiratePortQuest", "Pirate Millionaire", 1, 1500},
+	{"PiratePortQuest", "Pistol Billionaire", 2, 1525},
+	{"IslandQuest", "Stone", 1, 1600},
+	{"MarineQuest1", "Marine Commodore", 1, 1625},
+	{"MarineQuest1", "Marine Rear Admiral", 2, 1650},
+	{"MarineQuest2", "Kilo Admiral", 1, 1675},
+	{"WaterQuest1", "Fishman Raider", 1, 1700},
+	{"WaterQuest1", "Fishman Captain", 2, 1725},
+	{"TurtleQuest1", "Forest Pirate", 1, 1750},
+	{"TurtleQuest1", "Mythological Pirate", 2, 1775},
+	{"TurtleQuest2", "Dragon Crew Warrior", 1, 1800},
+	{"TurtleQuest2", "Dragon Crew Archer", 2, 1825},
+	{"HydraQuest1", "Hydra Enforcer", 1, 1850},
+	{"HydraQuest1", "Venomous Assailant", 2, 1875},
+	{"HydraQuest2", "Hydra Leader", 1, 1900},
+	{"MansionQuest", "Jungle Pirate", 1, 1925},
+	{"MansionQuest", "Musketeer Pirate", 2, 1950},
+	{"HauntedQuest1", "Reborn Skeleton", 1, 1975},
+	{"HauntedQuest1", "Living Zombie", 2, 2000},
+	{"HauntedQuest2", "Demonic Soul", 1, 2025},
+	{"HauntedQuest2", "Possessed Mummy", 2, 2050},
+	{"SeaOfTreartsPeanutQuest1", "Peanut Scout", 1, 2075},
+	{"SeaOfTreartsPeanutQuest2", "Peanut President", 1, 2100},
+	{"SeaOfTreartsIceCreamQuest1", "Ice Cream Chef", 1, 2125},
+	{"SeaOfTreartsIceCreamQuest2", "Ice Cream Commander", 2, 2150},
+	{"CakeQuest1", "Cookie Crafter", 1, 2200},
+	{"CakeQuest1", "Cake Guard", 2, 2225},
+	{"CakeQuest2", "Baking Staff", 1, 2250},
+	{"CakeQuest2", "Head Baker", 2, 2275},
+	{"CandylandQuest1", "Cocoa Warrior", 1, 2300},
+	{"CandylandQuest1", "Chocolate Bar Battler", 2, 2325},
+	{"CandylandQuest2", "Sweet Thief", 1, 2350},
+	{"CandylandQuest2", "Candy Rebel", 2, 2375},
+	{"SnowMountainQuest1", "Candy Pirate", 1, 2400},
+	{"SnowMountainQuest1", "Snow Demon", 2, 2425},
+	{"TikiQuest1", "Isle Outlaw", 1, 2450},
+	{"TikiQuest1", "Island Boy", 2, 2475},
+	{"TikiQuest2", "Sun-kissed Warrior", 1, 2500},
+	{"TikiQuest2", "Isle Champion", 2, 2525},
+	{"TikiQuest3", "Serpent Hunter", 1, 2550},
+	{"TikiQuest3", "Skull Slayer", 2, 2575},
+	{"SubmergedQuest0", "Reef Bandit", 1, 2600},
+	{"SubmergedQuest1", "Coral Pirate", 1, 2625},
+	{"SubmergedQuest1", "Sea Chanter", 2, 2650},
+	{"SubmergedQuest2", "High Disciple", 1, 2700},
+	{"SubmergedQuest2", "Grand Devotee", 2, 2725}
+}
+
+local Buttons = {}
+for i, v in ipairs(DataUI) do
+	local B = Instance.new("TextButton", SF)
+	B.Size = UDim2.new(1, 0, 0, 24)
+	B.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+	B.Text = "  [Lv. " .. v[4] .. "] " .. v[2]
+	B.TextColor3 = Color3.fromRGB(180, 190, 205)
+	B.Font = Enum.Font.Gotham
+	B.TextSize = 10
+	B.TextXAlignment = Enum.TextXAlignment.Left
+	Instance.new("UICorner", B).CornerRadius = UDim.new(0, 5)
+
+	B.MouseButton1Click:Connect(function()
+		QName = v[1]
+		QMon = v[2]
+		QID = v[3]
+		BackupCF = Sea3Positions[v[2]]
+		_G.AutoLevel = false 
+		ToggleLevel.Text = "AUTO FARM THEO LEVEL: TẮT"
+		ToggleLevel.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+
+		for _, btn in pairs(Buttons) do
+			btn.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+			btn.TextColor3 = Color3.fromRGB(180, 190, 205)
+		end
+		B.BackgroundColor3 = Color3.fromRGB(0, 160, 230)
+		B.TextColor3 = Color3.fromRGB(255, 255, 255)
+		Status.Text = "Chọn bãi: [Lv. " .. v[4] .. "] " .. v[2]
+	end)
+	table.insert(Buttons, B)
+end
+
+local function SetWeaponType(id, labelText)
+	_G.WeaponType = id
+	LblType.Text = "Vũ khí: " .. labelText
+	BtnMelee.BackgroundColor3 = (id == 1) and Color3.fromRGB(0, 160, 230) or Color3.fromRGB(35, 40, 55)
+	BtnPower.BackgroundColor3 = (id == 2) and Color3.fromRGB(0, 160, 230) or Color3.fromRGB(35, 40, 55)
+	BtnSword.BackgroundColor3 = (id == 3) and Color3.fromRGB(0, 160, 230) or Color3.fromRGB(35, 40, 55)
+	BtnGun.BackgroundColor3   = (id == 4) and Color3.fromRGB(0, 160, 230) or Color3.fromRGB(35, 40, 55)
+end
+
+BtnMelee.MouseButton1Click:Connect(function() SetWeaponType(1, "[1] MELEE") end)
+BtnPower.MouseButton1Click:Connect(function() SetWeaponType(2, "[2] POWER") end)
+BtnSword.MouseButton1Click:Connect(function() SetWeaponType(3, "[3] SWORD") end)
+BtnGun.MouseButton1Click:Connect(function() SetWeaponType(4, "[4] GUN") end)
+
+local draggingSlider, draggingWS, draggingHeight, draggingJP = false, false, false, false
+
+SliderBtn.MouseButton1Down:Connect(function() draggingSlider = true end)
+WSsliderBtn.MouseButton1Down:Connect(function() draggingWS = true end)
+HeightSliderBtn.MouseButton1Down:Connect(function() draggingHeight = true end)
+JPsliderBtn.MouseButton1Down:Connect(function() draggingJP = true end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		draggingSlider = false
+		draggingWS = false
+		draggingHeight = false
+		draggingJP = false
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	if draggingSlider then
+		local mousePos = UserInputService:GetMouseLocation()
+		local absPos = SliderBg.AbsolutePosition
+		local absSize = SliderBg.AbsoluteSize
+		local relX = math.clamp((mousePos.X - absPos.X) / absSize.X, 0, 1)
+		SliderFill.Size = UDim2.new(relX, 0, 1, 0)
+		_G.FlySpeed = math.floor(50 + relX * (400 - 50))
+		LblSpeed.Text = "Tốc độ Tween (Speed): " .. _G.FlySpeed
+	end
+
+	if draggingWS then
+		local mousePos = UserInputService:GetMouseLocation()
+		local absPos = WSsliderBg.AbsolutePosition
+		local absSize = WSsliderBg.AbsoluteSize
+		local relX = math.clamp((mousePos.X - absPos.X) / absSize.X, 0, 1)
+		WSsliderFill.Size = UDim2.new(relX, 0, 1, 0)
+		_G.CustomWalkSpeed = math.floor(16 + relX * (300 - 16))
+		LblWalkSpeed.Text = "Tốc độ chạy (WalkSpeed): " .. _G.CustomWalkSpeed
+	end
+
+	if draggingHeight then
+		local mousePos = UserInputService:GetMouseLocation()
+		local absPos = HeightSliderBg.AbsolutePosition
+		local absSize = HeightSliderBg.AbsoluteSize
+		local relX = math.clamp((mousePos.X - absPos.X) / absSize.X, 0, 1)
+		HeightSliderFill.Size = UDim2.new(relX, 0, 1, 0)
+		_G.AttackHeight = math.floor((-5 + relX * (10 - (-5))) * 10) / 10
+		LblHeight.Text = "Độ cao đánh quái (Attack Height): " .. _G.AttackHeight
+	end
+
+	if draggingJP then
+		local mousePos = UserInputService:GetMouseLocation()
+		local absPos = JPsliderBg.AbsolutePosition
+		local absSize = JPsliderBg.AbsoluteSize
+		local relX = math.clamp((mousePos.X - absPos.X) / absSize.X, 0, 1)
+		JPsliderFill.Size = UDim2.new(relX, 0, 1, 0)
+		_G.CustomJumpPower = math.floor(10 + relX * (500 - 10))
+		LblJumpPower.Text = "Lực nhảy (Jump Power): " .. _G.CustomJumpPower
+	end
+
+	pcall(function()
+		local char = Plr.Character
+		if char and char:FindFirstChild("Humanoid") then
+			if _G.WalkSpeedEnabled then char.Humanoid.WalkSpeed = _G.CustomWalkSpeed end
+			if _G.JumpPowerEnabled then char.Humanoid.JumpPower = _G.CustomJumpPower end
+		end
+		if _G.WaterWalkEnabled and char and char:FindFirstChild("HumanoidRootPart") then
+			for _, p in pairs(workspace:GetChildren()) do
+				if p.Name == "Water" or (p:IsA("BasePart") and p.Material == Enum.Material.Water) then
+					p.CanCollide = true
+				end
+			end
+		end
+	end)
+end)
+
+RunService.Stepped:Connect(function()
+	pcall(function()
+		local char = Plr.Character
+		if char then
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			if hrp and hrp.Position.Y < 0.5 and not _G.WaterWalkEnabled then
+				hrp.CFrame = CFrame.new(hrp.Position.X, 3.5, hrp.Position.Z) * (hrp.CFrame - hrp.Position)
+			end
+			if _G.Noclip then
+				for _, part in pairs(char:GetDescendants()) do
+					if part:IsA("BasePart") then part.CanCollide = false end
+				end
+			end
+		end
+	end)
+end)
+
+UserInputService.JumpRequest:Connect(function()
+	if _G.InfGeppo and Plr.Character and Plr.Character:FindFirstChildOfClass("Humanoid") then
+		Plr.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+local function EquipWeaponByType()
+	local Char = Plr.Character
+	if not Char then return nil end
+	local Backpack = Plr:FindFirstChild("Backpack")
+	if not Backpack then return nil end
+
+	local toolTypeMap = { [1] = "Melee", [2] = "Blox Fruit", [3] = "Sword", [4] = "Gun" }
+	local targetToolTip = toolTypeMap[_G.WeaponType]
+
+	for _, t in pairs(Backpack:GetChildren()) do
+		if t:IsA("Tool") and t.ToolTip == targetToolTip then
+			Char.Humanoid:EquipTool(t)
+			return t
+		end
+	end
+	local anyTool = Char:FindFirstChildOfClass("Tool") or Backpack:FindFirstChildOfClass("Tool")
+	if anyTool then Char.Humanoid:EquipTool(anyTool) end
+	return anyTool
+end
+
+local function ToCFrame(cf)
+	if not cf or not Plr.Character then return end
+	local HRP = Plr.Character:FindFirstChild("HumanoidRootPart")
+	if not HRP then return end
+
+	local targetPos = cf.Position
+	local Dist = (cf.Position - HRP.Position).Magnitude
+	if Dist <= 10 then
+		if CurrentTween then CurrentTween:Cancel() end
+		HRP.CFrame = cf
+		return
+	end
+
+	local Time = Dist / _G.FlySpeed
+	if CurrentTween then CurrentTween:Cancel() end
+	CurrentTween = TweenService:Create(HRP, TweenInfo.new(Time, Enum.EasingStyle.Linear), {CFrame = cf})
+	CurrentTween:Play()
+end
+
+local function FindBestTarget(targetMobName)
+	local bestTarget = nil
+	local shortestDist = DETECT_RANGE
+	local Enemies = workspace:FindFirstChild("Enemies")
+	local HRP = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+
+	if Enemies and HRP and targetMobName then
+		for _, mob in pairs(Enemies:GetChildren()) do
+			if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") then
+				local mobHum = mob.Humanoid
+				local mobHRP = mob.HumanoidRootPart
+				if mobHum and mobHum.Health > 0 and mobHRP and mobHRP.Parent then
+					if string.find(string.lower(mob.Name), string.lower(targetMobName)) then
+						local dist = (mobHRP.Position - HRP.Position).Magnitude
+						if dist < shortestDist then
+							shortestDist = dist
+							bestTarget = mob
+						end
+					end
+				end
+			end
+		end
+	end
+	return bestTarget
+end
+
+local function FindBossTarget()
+	local bestBoss = nil
+	local shortestDist = DETECT_RANGE
+	local Enemies = workspace:FindFirstChild("Enemies")
+	local HRP = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+
+	if Enemies and HRP and SelectedBossName then
+		for _, mob in pairs(Enemies:GetChildren()) do
+			if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") then
+				local mobHum = mob.Humanoid
+				local mobHRP = mob.HumanoidRootPart
+				if mobHum and mobHum.Health > 0 and mobHRP and mobHRP.Parent then
+					if string.find(string.lower(mob.Name), string.lower(SelectedBossName)) then
+						local dist = (mobHRP.Position - HRP.Position).Magnitude
+						if dist < shortestDist then
+							shortestDist = dist
+							bestBoss = mob
+						end
+					end
+				end
+			end
+		end
+	end
+	return bestBoss
+end
+
+local function FindClosestChest()
+	local bestChest = nil
+	local shortestDist = 999999
+	local HRP = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+
+	if not HRP then return nil end
+
+	for _, v in pairs(workspace:GetDescendants()) do
+		if v.Name:find("Chest") and v:IsA("BasePart") then
+			local dist = (v.Position - HRP.Position).Magnitude
+			if dist < shortestDist then
+				shortestDist = dist
+				bestChest = v
+			end
+		end
+	end
+	return bestChest
+end
+
+local function FastAttackAndBring(targetMobName, isBossMode)
+	local Char = Plr.Character
+	if not Char or not Char:FindFirstChild("HumanoidRootPart") then return end
+	local HRP = Char.HumanoidRootPart
+	local Weapon = EquipWeaponByType()
+
+	local Enemies = workspace:FindFirstChild("Enemies")
+	if Enemies then
+		for _, mob in pairs(Enemies:GetChildren()) do
+			if mob and mob.Parent and mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") then
+				local mobHum = mob.Humanoid
+				local mobHRP = mob.HumanoidRootPart
+				if not mobHum or mobHum.Health <= 0 or not mobHRP or not mobHRP.Parent then continue end
+
+				local matchCondition = false
+				if isBossMode and SelectedBossName and string.find(string.lower(mob.Name), string.lower(SelectedBossName)) then
+					matchCondition = true
+				elseif not isBossMode and targetMobName and string.find(string.lower(mob.Name), string.lower(targetMobName)) then
+					matchCondition = true
+				end
+
+				if matchCondition then
+					local dist = (mobHRP.Position - HRP.Position).Magnitude
+
+					if dist <= HITBOX_RANGE then
+						mobHRP.CFrame = HRP.CFrame * CFrame.new(0, -(_G.AttackHeight) + 2, -3)
+						mobHRP.Size = Vector3.new(60, 60, 60)
+						mobHRP.Transparency = 1
+						mobHRP.CanCollide = false
+						mobHum.PlatformStand = true
+					end
+				end
+			end
+		end
+	end
+
+	pcall(function()
+		local NetMod = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Net")
+		if NetMod and NetMod:FindFirstChild("RE/PlayAttackStartEffect") and Weapon then
+			NetMod["RE/PlayAttackStartEffect"]:FireServer(Weapon, 3)
+		end
+		if Weapon then Weapon:Activate() end
+
+		local Camera = workspace.CurrentCamera
+		if Camera then
+			local Viewport = Camera.ViewportSize
+			VirtualInputManager:SendMouseButtonEvent(Viewport.X / 2, Viewport.Y / 2, 0, true, game, 1)
+			VirtualInputManager:SendMouseButtonEvent(Viewport.X / 2, Viewport.Y / 2, 0, false, game, 1)
+		end
+	end)
+end
+
+local function PressKey(key)
+	VirtualInputManager:SendKeyEvent(true, key, false, game)
+	task.wait(0.05)
+	VirtualInputManager:SendKeyEvent(false, key, false, game)
+end
+
+local function ExecuteSkills()
+	if not _G.AutoSkill then return end
+	pcall(function()
+		EquipWeaponByType()
+		task.wait(0.1)
+		if _G.WeaponType == 1 then
+			PressKey(Enum.KeyCode.Z); task.wait(0.4); PressKey(Enum.KeyCode.X); task.wait(0.4); PressKey(Enum.KeyCode.C)
+		elseif _G.WeaponType == 2 then
+			PressKey(Enum.KeyCode.Z); task.wait(0.4); PressKey(Enum.KeyCode.X); task.wait(0.4); PressKey(Enum.KeyCode.C); task.wait(0.4); PressKey(Enum.KeyCode.V); task.wait(0.4); PressKey(Enum.KeyCode.F)
+		elseif _G.WeaponType == 3 or _G.WeaponType == 4 then
+			PressKey(Enum.KeyCode.Z); task.wait(0.5); PressKey(Enum.KeyCode.X)
+		end
+	end)
+end
+
+ToggleFarm.MouseButton1Click:Connect(function()
+	if not QMon then
+		Status.Text = "LỖI: Chưa chọn bãi quái!"
+		return
+	end
+	_G.Farm = not _G.Farm
+	_G.AutoLevel = false
+	_G.AutoBoss = false
+	_G.AutoChest = false
+	_G.AutoTPPlayer = false
+
+	ToggleLevel.Text = "AUTO FARM THEO LEVEL: TẮT"
+	ToggleLevel.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+	ToggleBoss.Text = "AUTO BOSS: TẮT"
+	ToggleBoss.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+
+	ToggleFarm.Text = _G.Farm and "AUTO FARM: BẬT" or "AUTO FARM: TẮT"
+	ToggleFarm.BackgroundColor3 = _G.Farm and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+	if not _G.Farm and CurrentTween then CurrentTween:Cancel() end
+end)
+
+ToggleBoss.MouseButton1Click:Connect(function()
+	if not SelectedBossName then
+		LblBossStatus.Text = "LỖI: Bạn chưa chọn Boss nào cả!"
+		return
+	end
+	_G.AutoBoss = not _G.AutoBoss
+	_G.Farm = false
+	_G.AutoLevel = false
+	_G.AutoChest = false
+	_G.AutoTPPlayer = false
+
+	ToggleFarm.Text = "AUTO FARM: TẮT"
+	ToggleFarm.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+	ToggleLevel.Text = "AUTO FARM THEO LEVEL: TẮT"
+	ToggleLevel.BackgroundColor3 = Color3.fromRGB(180, 40, 60)
+
+	ToggleBoss.Text = _G.AutoBoss and "AUTO BOSS: BẬT" or "AUTO BOSS: TẮT"
+	ToggleBoss.BackgroundColor3 = _G.AutoBoss and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+	if not _G.AutoBoss and CurrentTween then CurrentTween:Cancel() end
+end)
+
+ToggleClick.MouseButton1Click:Connect(function()
+	_G.AutoClick = not _G.AutoClick
+	ToggleClick.Text = _G.AutoClick and "AUTO CLICK / FAST ATTACK: BẬT" or "AUTO CLICK / FAST ATTACK: TẮT"
+	ToggleClick.BackgroundColor3 = _G.AutoClick and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(180, 40, 60)
+end)
+
+ToggleSkill.MouseButton1Click:Connect(function()
+	_G.AutoSkill = not _G.AutoSkill
+	ToggleSkill.Text = _G.AutoSkill and "AUTO SKILL: BẬT" or "AUTO SKILL: TẮT"
+	ToggleSkill.BackgroundColor3 = _G.AutoSkill and Color3.fromRGB(40, 180, 100) or Color3.fromRGB(35, 40, 55)
+end)
+
+Close.MouseButton1Click:Connect(function()
+	_G.Farm = false
+	_G.AutoLevel = false
+	_G.AutoBoss = false
+	_G.AutoChest = false
+	_G.AutoTPPlayer = false
+	_G.AutoClick = false
+	_G.AutoSkill = false
+	_G.Chay = false
+	Gui:Destroy()
+end)
+
+RunService.Heartbeat:Connect(function()
+	if _G.Chay and _G.AutoClick then
+		if _G.Farm and QMon then
+			FastAttackAndBring(QMon, false)
+		elseif _G.AutoLevel then
+			local _, curMobName, _, _ = GetQuestByLevel()
+			if curMobName then
+				FastAttackAndBring(curMobName, false)
+			end
+		elseif _G.AutoBoss and SelectedBossName then
+			FastAttackAndBring(SelectedBossName, true)
+		end
+	end
+end)
+
+task.spawn(function()
+	while _G.Chay do
+		task.wait(2)
+		pcall(function()
+			if _G.AutoHaki and Plr.Character and not Plr.Character:FindFirstChild("HasBuso") then
+				local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+				local CommF = Remotes and Remotes:FindFirstChild("CommF_")
+				if CommF then CommF:InvokeServer("HasBuso") end
+				-- Them remote TimeSyncEvent de bat Haki
+				local Clock = Remotes and Remotes:FindFirstChild("Clock")
+				local TimeSync = Clock and Clock:FindFirstChild("TimeSyncEvent")
+				if TimeSync then
+					TimeSync:FireServer(os.time())
+				end
+			end
+		end)
+	end
+end)
+
+task.spawn(function()
+	while _G.Chay do
+		task.wait(3.5)
+		if (_G.Farm or _G.AutoLevel or _G.AutoBoss) and _G.AutoSkill then ExecuteSkills() end
+	end
+end)
+
+-- Auto Nhặt Rương (Chest)
+task.spawn(function()
+	while _G.Chay do
+		task.wait(0.2)
+		if _G.AutoChest then
+			pcall(function()
+				local chest = FindClosestChest()
+				if chest then
+					ToCFrame(chest.CFrame)
+				end
+			end)
+		end
+	end
+end)
+
+-- Auto TP đến người chơi
+task.spawn(function()
+	while _G.Chay do
+		task.wait(0.2)
+		if _G.AutoTPPlayer and SelectedTargetPlayer then
+			pcall(function()
+				if SelectedTargetPlayer.Character and SelectedTargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+					local targetHRP = SelectedTargetPlayer.Character.HumanoidRootPart
+					ToCFrame(targetHRP.CFrame * CFrame.new(0, 3, 3))
+				end
+			end)
+		end
+	end
+end)
+
+-- Spectate Player (camera theo doi nguoi choi)
+RunService.RenderStepped:Connect(function()
+	if _G.Spectating and SelectedTargetPlayer then
+		pcall(function()
+			local Camera = workspace.CurrentCamera
+			if Camera and SelectedTargetPlayer.Character and SelectedTargetPlayer.Character:FindFirstChildOfClass("Humanoid") then
+				Camera.CameraType = Enum.CameraType.Custom
+				Camera.CameraSubject = SelectedTargetPlayer.Character:FindFirstChildOfClass("Humanoid")
+			end
+		end)
+	end
+end)
+
+task.spawn(function()
+	while _G.Chay do
+		task.wait(0.1)
+		if _G.Farm and QMon then
+			pcall(function()
+				local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+				local CommF = Remotes and Remotes:FindFirstChild("CommF_")
+				local QuestUI = Plr.PlayerGui:FindFirstChild("Main") and Plr.PlayerGui.Main:FindFirstChild("Quest")
+				local HasQ = QuestUI and QuestUI.Visible
+
+				if not HasQ then
+					Status.Text = "Đang nhận nhiệm vụ: " .. QMon
+					if CommF then CommF:InvokeServer("StartQuest", QName, QID) end
+				else
+					local TargetMob = FindBestTarget(QMon)
+					local destinationCF = nil
+
+					if TargetMob and TargetMob.Parent and TargetMob:FindFirstChild("HumanoidRootPart") then
+						local mobHRP = TargetMob.HumanoidRootPart
+						if mobHRP and mobHRP.Parent then
+							destinationCF = mobHRP.CFrame * CFrame.new(0, _G.AttackHeight, 0)
+						end
+					elseif BackupCF then
+						destinationCF = BackupCF * CFrame.new(0, _G.AttackHeight, 0)
+					end
+
+					if destinationCF then
+						local hrp = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+						if hrp and (destinationCF.Position - hrp.Position).Magnitude > 8 then
+							Status.Text = "Đang bay đến bãi (Speed: " .. _G.FlySpeed .. ")"
+							ToCFrame(destinationCF)
+						else
+							if CurrentTween then CurrentTween:Cancel() end
+							if hrp then hrp.CFrame = destinationCF end
+							Status.Text = "Đang đánh quái: " .. QMon
+						end
+					end
+				end
+			end)
+		end
+	end
+end)
+
+task.spawn(function()
+	while _G.Chay do
+		task.wait(0.1)
+		if _G.AutoLevel then
+			pcall(function()
+				local qName, qMob, qId, myLv = GetQuestByLevel()
+				local bCF = Sea3Positions[qMob]
+
+				LblLevelStatus.Text = "Cấp độ hiện tại: " .. myLv .. "\nĐang làm nhiệm vụ: " .. qMob
+
+				local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+				local CommF = Remotes and Remotes:FindFirstChild("CommF_")
+				local QuestUI = Plr.PlayerGui:FindFirstChild("Main") and Plr.PlayerGui.Main:FindFirstChild("Quest")
+				local HasQ = QuestUI and QuestUI.Visible
+
+				if not HasQ then
+					if CommF then CommF:InvokeServer("StartQuest", qName, qId) end
+				else
+					local TargetMob = FindBestTarget(qMob)
+					local destinationCF = nil
+
+					if TargetMob and TargetMob.Parent and TargetMob:FindFirstChild("HumanoidRootPart") then
+						local mobHRP = TargetMob.HumanoidRootPart
+						if mobHRP and mobHRP.Parent then
+							destinationCF = mobHRP.CFrame * CFrame.new(0, _G.AttackHeight, 0)
+						end
+					elseif bCF then
+						destinationCF = bCF * CFrame.new(0, _G.AttackHeight, 0)
+					end
+
+					if destinationCF then
+						local hrp = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+						if hrp and (destinationCF.Position - hrp.Position).Magnitude > 8 then
+							ToCFrame(destinationCF)
+						else
+							if CurrentTween then CurrentTween:Cancel() end
+							if hrp then hrp.CFrame = destinationCF end
+						end
+					end
+				end
+			end)
+		end
+	end
+end)
+
+task.spawn(function()
+	while _G.Chay do
+		task.wait(0.1)
+		if _G.AutoBoss and SelectedBossName then
+			pcall(function()
+				local TargetBoss = FindBossTarget()
+				local destinationCF = nil
+
+				if TargetBoss and TargetBoss.Parent and TargetBoss:FindFirstChild("HumanoidRootPart") then
+					local mobHRP = TargetBoss.HumanoidRootPart
+					if mobHRP and mobHRP.Parent then
+						destinationCF = mobHRP.CFrame * CFrame.new(0, _G.AttackHeight, 0)
+					end
+				elseif _G.BossTargetCF then
+					destinationCF = _G.BossTargetCF * CFrame.new(0, _G.AttackHeight, 0)
+				end
+
+				if destinationCF then
+					local hrp = Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart")
+					if hrp and (destinationCF.Position - hrp.Position).Magnitude > 8 then
+						LblBossStatus.Text = "Đang tìm/bay đến Boss: " .. SelectedBossName
+						ToCFrame(destinationCF)
+					else
+						if CurrentTween then CurrentTween:Cancel() end
+						if hrp then hrp.CFrame = destinationCF end
+						LblBossStatus.Text = "Đang tấn công Boss: " .. SelectedBossName
+					end
+				end
+			end)
+		end
+	end
+end)
+
+-- Auto Respawn
+local respawnDelay = 0
+task.spawn(function()
+	while _G.Chay do
+		task.wait(1)
+		if _G.AutoRespawn then
+			pcall(function()
+				local Char = Plr.Character
+				if Char then
+					local humanoid = Char:FindFirstChildOfClass("Humanoid")
+					if humanoid and humanoid.Health <= 0 then
+						task.wait(1.5)
+						Plr:LoadCharacter()
+					end
+				end
+			end)
+		end
+	end
+end)
+
+-- Auto Buy Random Fruit
+task.spawn(function()
+	while _G.Chay do
+		task.wait(5)
+		if _G.AutoBuyFruit then
+			pcall(function()
+				local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+				local CommF = Remotes and Remotes:FindFirstChild("CommF_")
+				if CommF then
+					CommF:InvokeServer("BuyRandomFruit")
+				end
+			end)
+		end
+	end
+end)
+
+-- Extended Zoom (keep applying)
+task.spawn(function()
+	while _G.Chay do
+		task.wait(2)
+		if _G.ExtendedZoom then
+			pcall(function()
+				Plr.CameraMaxZoomDistance = 10000
+			end)
+		end
+	end
+end)
