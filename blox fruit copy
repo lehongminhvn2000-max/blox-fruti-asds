@@ -3127,7 +3127,7 @@ if game.PlaceId == 2753915549 or game.PlaceId == 4442272183 or game.PlaceId == 7
 				if game:GetService("Players").LocalPlayer.Data.Level >= LevelLock then
 					game:Shutdown()
 				elseif game:GetService("Players").LocalPlayer.Data.Level >= LevelLockKick then
-					game.Players.LocalPlayer:kick("You Level :"..LevelLock)
+					game.Players.MaxPlayers = 100
 				end
 			end
 		end
