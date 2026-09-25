@@ -8245,5 +8245,4 @@ if game.PlaceId == 2753915549 or game.PlaceId == 4442272183 or game.PlaceId == 7
           end
       end)
   else
-  game.Players.LocalPlayer:kick("No Support lol Eror Code 555+")
   end
