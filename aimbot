@@ -1,6 +1,6 @@
 -- Aim Lock: khóa camera vào part mục tiêu (mặc định "Head") của NPC / người chơi trong vòng FOV.
--- RightShift: ẩn/hiện menu · Q: bật/tắt · Alt: thả/khóa chuột (để bấm menu khi đang first-person / shift-lock)
--- X: tắt hẳn script và xóa toàn bộ UI (tới khi vào lại game)
+-- Phím mặc định (đổi được ở tab Misc): RightShift menu · Q bật/tắt · Alt thả/khóa chuột
+-- (để bấm menu khi đang first-person / shift-lock) · X tắt hẳn script và xóa toàn bộ UI
 -- Team: người chơi dùng Player.Team, NPC dùng attribute "Team" (string) trên Model, vd: Team = "Red".
 
 local GuiService = game:GetService("GuiService")
@@ -13,10 +13,35 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local MENU_KEY = Enum.KeyCode.RightShift
-local TOGGLE_KEY = Enum.KeyCode.Q
-local FREE_MOUSE_KEYS = { Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt }
-local UNLOAD_KEY = Enum.KeyCode.X
+-- Phím tắt (đổi được trong tab Misc)
+local keybinds = {
+	Menu = Enum.KeyCode.RightShift,
+	Toggle = Enum.KeyCode.Q,
+	FreeMouse = Enum.KeyCode.LeftAlt,
+	Unload = Enum.KeyCode.X,
+}
+local DEFAULT_KEYBINDS = table.clone(keybinds)
+
+local KEY_SHORT_NAMES = {
+	RightShift = "RShift",
+	LeftShift = "LShift",
+	LeftAlt = "Alt",
+	RightAlt = "RAlt",
+	LeftControl = "LCtrl",
+	RightControl = "RCtrl",
+}
+
+local function keyName(keyCode)
+	return KEY_SHORT_NAMES[keyCode.Name] or keyCode.Name
+end
+
+local function matchesKey(action, keyCode)
+	-- Alt trái/phải đều dùng được khi phím thả chuột còn để mặc định
+	if action == "FreeMouse" and keybinds.FreeMouse == Enum.KeyCode.LeftAlt and keyCode == Enum.KeyCode.RightAlt then
+		return true
+	end
+	return keyCode == keybinds[action]
+end
 
 -- "Always" không có trong bảng = luôn aim, không cần giữ chuột
 local AIM_KEYS = {
@@ -29,17 +54,27 @@ local settings = {
 	AimKey = "Right mouse", -- "Right mouse" | "Left mouse" | "Always"
 	TargetType = "Both", -- "Both" | "Players only" | "Dummies only"
 	TargetPart = "Head", -- "Head" | "Head > Body" (đầu bị che thì ngắm thân) | "Torso" | "Root"
-	TeamFilter = "All", -- "All" | "Enemies" | tên một team
+	TeamCheck = true, -- bỏ qua đồng đội (người chơi cùng team / NPC có attribute Team trùng tên team mình)
+	TeamFilter = "All", -- "All" | tên một team (chỉ ngắm team đó)
 	Priority = "Cursor", -- "Cursor" | "Distance" | "Lowest HP"
 	WallCheck = true,
+	FOVOrigin = "Mouse", -- "Mouse" | "Center" (tâm màn hình, hợp khi cầm súng vì súng bắn về tâm)
+	StickyLock = true, -- giữ mục tiêu tới khi mất; tắt thì mỗi frame chọn lại mục tiêu tốt nhất
+	AutoShoot = false, -- tự bóp cò Tool đang cầm khi tâm màn hình nằm trên mục tiêu đang khóa
 	ShowFOV = true,
 	Highlight = true,
 	ESP = false,
+	ESPBoxes = false,
+	Tracers = false,
+	SnapLine = false,
+	TargetInfo = true,
+	Notifications = true,
 	FOV = 150,
 	MaxDistance = 1000,
 	Smoothness = 2,
 	Prediction = 0,
 }
+local DEFAULT_SETTINGS = table.clone(settings)
 
 local COLORS = {
 	Window = Color3.fromRGB(20, 22, 28),
@@ -126,7 +161,7 @@ local function getTeamColor(teamName)
 	return Color3.fromHSV(hash / 360, 0.6, 1)
 end
 
--- "All", "Enemies" + mọi team đang có (Teams service và attribute Team của NPC)
+-- "All" + mọi team đang có (Teams service và attribute Team của NPC)
 local function getTeamOptions()
 	local names, seen = {}, {}
 	local function add(name)
@@ -143,21 +178,23 @@ local function getTeamOptions()
 	end
 	table.sort(names)
 	table.insert(names, 1, "All")
-	table.insert(names, 2, "Enemies")
 	return names
 end
 
+local function getMyTeam()
+	return if player.Team and not player.Neutral then player.Team.Name else nil
+end
+
+-- Skip teammates luôn được xét trước, nên dù chọn "All" hay đúng tên team mình cũng không ngắm đồng đội
 local function passesTeamFilter(model)
-	local filter = settings.TeamFilter
-	if filter == "All" then
-		return true
-	end
 	local team = getModelTeam(model)
-	if filter == "Enemies" then
-		local myTeam = if player.Team and not player.Neutral then player.Team.Name else nil
-		return myTeam == nil or team ~= myTeam
+	if settings.TeamCheck then
+		local myTeam = getMyTeam()
+		if myTeam and team == myTeam then
+			return false
+		end
 	end
-	return team == filter
+	return settings.TeamFilter == "All" or team == settings.TeamFilter
 end
 
 --// UI helpers
@@ -235,6 +272,115 @@ local highlight = create("Highlight", {
 	Enabled = false,
 	Parent = gui,
 })
+
+-- Lớp vẽ 2D (ESP box, tracer, snap line), tạo trước menu nên nằm dưới menu
+local overlay = create("Frame", {
+	Name = "Overlay",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Parent = gui,
+})
+
+local function makeLine(parent)
+	return create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		Visible = false,
+		Parent = parent,
+	})
+end
+
+local function placeLine(line, from, to)
+	local delta = to - from
+	line.Position = UDim2.fromOffset((from.X + to.X) / 2, (from.Y + to.Y) / 2)
+	line.Size = UDim2.fromOffset(delta.Magnitude, 1.5)
+	line.Rotation = math.deg(math.atan2(delta.Y, delta.X))
+	line.Visible = true
+end
+
+local snapLine = makeLine(overlay)
+
+-- Thẻ thông tin mục tiêu ở giữa phía trên màn hình
+local infoCard = create("Frame", {
+	Name = "TargetInfo",
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 70),
+	Size = UDim2.fromOffset(230, 56),
+	BackgroundColor3 = COLORS.Window,
+	BackgroundTransparency = 0.1,
+	Visible = false,
+	Parent = gui,
+}, {
+	corner(UDim.new(0, 8)),
+	create("UIStroke", { Color = COLORS.Border }),
+})
+local infoName = label({
+	Position = UDim2.fromOffset(10, 6),
+	Size = UDim2.new(0.65, -10, 0, 18),
+	Font = Enum.Font.GothamBold,
+	TextSize = 14,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = infoCard,
+})
+local infoDistance = label({
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -10, 0, 6),
+	Size = UDim2.new(0.35, -10, 0, 18),
+	TextSize = 12,
+	TextColor3 = COLORS.SubText,
+	TextXAlignment = Enum.TextXAlignment.Right,
+	Parent = infoCard,
+})
+local infoBar = create("Frame", {
+	Position = UDim2.fromOffset(10, 28),
+	Size = UDim2.new(1, -20, 0, 6),
+	BackgroundColor3 = COLORS.Off,
+	Parent = infoCard,
+}, { corner(UDim.new(1, 0)) })
+local infoFill = create("Frame", { Size = UDim2.fromScale(1, 1), Parent = infoBar }, { corner(UDim.new(1, 0)) })
+local infoDetail = label({
+	Position = UDim2.fromOffset(10, 38),
+	Size = UDim2.new(1, -20, 0, 14),
+	TextSize = 11,
+	TextColor3 = COLORS.SubText,
+	Parent = infoCard,
+})
+
+-- Thông báo ngắn ở dưới màn hình khi bấm phím tắt
+local toast = label({
+	Name = "Toast",
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -110),
+	Size = UDim2.fromOffset(0, 30),
+	AutomaticSize = Enum.AutomaticSize.X,
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	Visible = false,
+	Parent = gui,
+})
+toast.BackgroundColor3 = COLORS.Window
+toast.BackgroundTransparency = 0.1
+create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = toast })
+create("UIStroke", { Color = COLORS.Border, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = toast })
+create("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14), Parent = toast })
+
+local toastId = 0
+
+local function notify(text, color)
+	if not settings.Notifications then
+		return
+	end
+	toastId += 1
+	local id = toastId
+	toast.Text = text
+	toast.TextColor3 = color or COLORS.Text
+	toast.Visible = true
+	task.delay(1.4, function()
+		if toastId == id then
+			toast.Visible = false
+		end
+	end)
+end
 
 local window = create("Frame", {
 	Name = "Window",
@@ -389,8 +535,10 @@ local hintLabel = label({
 local mouseFree = false
 
 local function renderHint()
-	local mouseHint = if mouseFree then `<font color="#FFC43C">Alt: mouse FREE</font>` else "Alt: free mouse"
-	hintLabel.Text = `RShift: menu  ·  Q: on/off  ·  X: unload\n{mouseHint}`
+	local freeKey = keyName(keybinds.FreeMouse)
+	local mouseHint = if mouseFree then `<font color="#FFC43C">{freeKey}: mouse FREE</font>` else `{freeKey}: free mouse`
+	hintLabel.Text =
+		`{keyName(keybinds.Menu)}: menu  ·  {keyName(keybinds.Toggle)}: on/off  ·  {keyName(keybinds.Unload)}: unload\n{mouseHint}`
 end
 renderHint()
 
@@ -419,7 +567,7 @@ local function makePage(order, name)
 	local button = create("TextButton", {
 		Name = name .. "Tab",
 		LayoutOrder = order,
-		Size = UDim2.new(1 / 3, -4, 0, 24),
+		Size = UDim2.new(1 / 4, -5, 0, 24),
 		BackgroundColor3 = COLORS.Row,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBold,
@@ -446,6 +594,8 @@ end
 --// Controls
 
 local toggles = {}
+-- Hàm vẽ lại của mọi control, dùng cho nút Reset
+local controlRenderers = {}
 
 local function makeToggle(parent, order, text, key)
 	local row = create("TextButton", {
@@ -489,6 +639,7 @@ local function makeToggle(parent, order, text, key)
 	end)
 	render()
 	toggles[key] = render
+	table.insert(controlRenderers, render)
 end
 
 local activeSlider = nil
@@ -557,6 +708,7 @@ local function makeSlider(parent, order, text, key, min, max, step, format)
 		end
 	end)
 	render()
+	table.insert(controlRenderers, render)
 end
 
 -- Dropdown mở rộng ngay trong menu; getOptions được gọi mỗi lần mở nên danh sách team luôn mới
@@ -668,10 +820,11 @@ local function makeDropdown(parent, order, text, key, getOptions, getOptionColor
 		end
 	end)
 	render()
+	table.insert(controlRenderers, close)
 end
 
 local function teamOptionColor(option)
-	if option == "All" or option == "Enemies" then
+	if option == "All" then
 		return nil
 	end
 	return getTeamColor(option)
@@ -680,31 +833,157 @@ end
 local aimPage = makePage(1, "Aim")
 local targetPage = makePage(2, "Target")
 local visualsPage = makePage(3, "Visuals")
+local miscPage = makePage(4, "Misc")
 
 makeToggle(aimPage, 1, "Enabled", "Enabled")
 makeDropdown(aimPage, 2, "Aim key", "AimKey", function()
 	return { "Right mouse", "Left mouse", "Always" }
 end)
-makeSlider(aimPage, 3, "FOV radius", "FOV", 30, 600, 5, "%.0f px")
-makeSlider(aimPage, 4, "Smoothness", "Smoothness", 0, 10, 0.5, "%.1f")
-makeSlider(aimPage, 5, "Prediction", "Prediction", 0, 0.3, 0.01, "%.2f s")
+makeDropdown(aimPage, 3, "FOV origin", "FOVOrigin", function()
+	return { "Mouse", "Center" }
+end)
+makeSlider(aimPage, 4, "FOV radius", "FOV", 30, 1000, 5, "%.0f px")
+makeSlider(aimPage, 5, "Smoothness", "Smoothness", 0, 10, 0.5, "%.1f")
+makeSlider(aimPage, 6, "Prediction", "Prediction", 0, 0.3, 0.01, "%.2f s")
+makeToggle(aimPage, 7, "Sticky lock", "StickyLock")
+makeToggle(aimPage, 8, "Auto shoot (gun)", "AutoShoot")
 
 makeDropdown(targetPage, 0, "Target type", "TargetType", function()
 	return { "Both", "Players only", "Dummies only" }
 end)
-makeDropdown(targetPage, 1, "Team", "TeamFilter", getTeamOptions, teamOptionColor)
-makeToggle(targetPage, 2, "Wall check", "WallCheck")
-makeDropdown(targetPage, 3, "Target part", "TargetPart", function()
+makeToggle(targetPage, 1, "Skip teammates", "TeamCheck")
+makeDropdown(targetPage, 2, "Target team", "TeamFilter", getTeamOptions, teamOptionColor)
+makeToggle(targetPage, 3, "Wall check", "WallCheck")
+makeDropdown(targetPage, 4, "Target part", "TargetPart", function()
 	return { "Head", "Head > Body", "Torso", "Root" }
 end, nil, renderTitle)
-makeDropdown(targetPage, 4, "Priority", "Priority", function()
+makeDropdown(targetPage, 5, "Priority", "Priority", function()
 	return { "Cursor", "Distance", "Lowest HP" }
 end)
-makeSlider(targetPage, 5, "Max distance", "MaxDistance", 50, 2000, 50, "%.0f studs")
+
+-- Cho biết mình đang ở team nào để hiểu Skip teammates đang bỏ qua ai
+local myTeamLabel = label({
+	Name = "MyTeam",
+	LayoutOrder = -1,
+	Size = UDim2.new(1, 0, 0, 18),
+	RichText = true,
+	TextColor3 = COLORS.SubText,
+	Parent = targetPage,
+})
+create("UIPadding", { PaddingLeft = UDim.new(0, 4), Parent = myTeamLabel })
+
+local function renderMyTeam()
+	local myTeam = getMyTeam()
+	myTeamLabel.Text = if myTeam
+		then `Your team: <font color="#{getTeamColor(myTeam):ToHex()}"><b>{myTeam}</b></font>`
+		else "Your team: none"
+end
+renderMyTeam()
+connect(player:GetPropertyChangedSignal("Team"), renderMyTeam)
+connect(player:GetPropertyChangedSignal("Neutral"), renderMyTeam)
+
+makeSlider(targetPage, 6, "Max distance", "MaxDistance", 50, 2000, 50, "%.0f studs")
 
 makeToggle(visualsPage, 1, "Show FOV circle", "ShowFOV")
 makeToggle(visualsPage, 2, "Highlight target", "Highlight")
 makeToggle(visualsPage, 3, "ESP (name + HP)", "ESP")
+makeToggle(visualsPage, 4, "ESP boxes", "ESPBoxes")
+makeToggle(visualsPage, 5, "Tracers", "Tracers")
+makeToggle(visualsPage, 6, "Snap line", "SnapLine")
+makeToggle(visualsPage, 7, "Target info card", "TargetInfo")
+
+-- Misc: đổi phím tắt (bấm nút rồi nhấn phím mới, Esc để hủy), thông báo, reset
+local KEYBIND_LABELS = {
+	Menu = "Menu",
+	Toggle = "Aim on/off",
+	FreeMouse = "Free mouse",
+	Unload = "Unload",
+}
+local capturingAction = nil
+local keybindButtons = {}
+
+local function renderKeybind(action)
+	local button = keybindButtons[action]
+	local capturing = capturingAction == action
+	button.Text = if capturing then "press a key..." else keyName(keybinds[action])
+	button.TextColor3 = if capturing then COLORS.Tracking else COLORS.Accent
+end
+
+local function makeKeybind(order, action)
+	local row = create("Frame", {
+		Name = action .. "Key",
+		LayoutOrder = order,
+		Size = UDim2.new(1, 0, 0, 28),
+		BackgroundColor3 = COLORS.Row,
+		Parent = miscPage,
+	}, { corner() })
+	label({ Text = KEYBIND_LABELS[action], Position = UDim2.fromOffset(10, 0), Size = UDim2.new(0.5, 0, 1, 0), Parent = row })
+	local button = create("TextButton", {
+		Name = "Bind",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -6, 0.5, 0),
+		Size = UDim2.fromOffset(100, 20),
+		BackgroundColor3 = COLORS.Window,
+		Font = Enum.Font.GothamBold,
+		TextSize = 12,
+		Parent = row,
+	}, { corner(UDim.new(0, 4)) })
+	button.MouseButton1Click:Connect(function()
+		local previous = capturingAction
+		capturingAction = if previous == action then nil else action
+		if previous and previous ~= action then
+			renderKeybind(previous)
+		end
+		renderKeybind(action)
+	end)
+	keybindButtons[action] = button
+	renderKeybind(action)
+end
+
+label({
+	LayoutOrder = 0,
+	Size = UDim2.new(1, 0, 0, 16),
+	TextSize = 11,
+	TextColor3 = COLORS.SubText,
+	Text = " Keybinds · click, then press a key",
+	Parent = miscPage,
+})
+makeKeybind(1, "Menu")
+makeKeybind(2, "Toggle")
+makeKeybind(3, "FreeMouse")
+makeKeybind(4, "Unload")
+makeToggle(miscPage, 5, "Notifications", "Notifications")
+
+local resetButton = create("TextButton", {
+	Name = "Reset",
+	LayoutOrder = 6,
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = COLORS.Row,
+	Font = Enum.Font.GothamBold,
+	TextSize = 12,
+	TextColor3 = COLORS.Locked,
+	Text = "Reset all settings",
+	Parent = miscPage,
+}, { corner() })
+
+resetButton.MouseButton1Click:Connect(function()
+	for key, value in DEFAULT_SETTINGS do
+		settings[key] = value
+	end
+	for action, keyCode in DEFAULT_KEYBINDS do
+		keybinds[action] = keyCode
+	end
+	capturingAction = nil
+	for _, render in controlRenderers do
+		render()
+	end
+	for action in keybindButtons do
+		renderKeybind(action)
+	end
+	renderTitle()
+	renderHint()
+	notify("Settings reset", COLORS.Accent)
+end)
 
 selectTab("Aim")
 
@@ -769,18 +1048,68 @@ local function setMouseFree(free)
 	renderHint()
 end
 
+local unload -- gán ở cuối script
+
+-- Phím thả chuột đổi trạng thái khi NHẢ phím, và bị hủy nếu trong lúc giữ có phím khác (Alt+Tab)
+-- hoặc cửa sổ mất/được focus, để Alt+Tab ra vào game không vô tình thả chuột
+local freeMouseArmed = false
+-- Bỏ qua Alt trong 2 giây đầu: Windows hay gửi một cú Alt giả khi đưa cửa sổ game lên trước
+local ignoreFreeMouseUntil = os.clock() + 2
+
 connect(UserInputService.InputBegan, function(input, processed)
+	-- Đang chờ đổi phím: phím kế tiếp là phím mới (Esc để hủy), không kích hoạt chức năng nào
+	if capturingAction and input.UserInputType == Enum.UserInputType.Keyboard then
+		local action = capturingAction
+		capturingAction = nil
+		if input.KeyCode ~= Enum.KeyCode.Escape then
+			keybinds[action] = input.KeyCode
+			notify(`{KEYBIND_LABELS[action]} key: {keyName(input.KeyCode)}`, COLORS.Accent)
+		end
+		renderKeybind(action)
+		renderHint()
+		return
+	end
+	if input.UserInputType == Enum.UserInputType.Keyboard and not matchesKey("FreeMouse", input.KeyCode) then
+		freeMouseArmed = false
+	end
 	if processed then
 		return
 	end
-	if input.KeyCode == MENU_KEY then
+	if matchesKey("Menu", input.KeyCode) then
 		window.Visible = not window.Visible
-	elseif input.KeyCode == TOGGLE_KEY then
+		if not window.Visible then
+			notify(`Menu hidden · {keyName(keybinds.Menu)} to show`)
+		end
+	elseif matchesKey("Toggle", input.KeyCode) then
 		settings.Enabled = not settings.Enabled
 		toggles.Enabled()
-	elseif table.find(FREE_MOUSE_KEYS, input.KeyCode) then
-		setMouseFree(not mouseFree)
+		notify(
+			if settings.Enabled then "Aim lock: ON" else "Aim lock: OFF",
+			if settings.Enabled then COLORS.Accent else COLORS.SubText
+		)
+	elseif matchesKey("FreeMouse", input.KeyCode) then
+		freeMouseArmed = os.clock() >= ignoreFreeMouseUntil
+	elseif matchesKey("Unload", input.KeyCode) then
+		unload()
 	end
+end)
+
+connect(UserInputService.InputEnded, function(input)
+	if freeMouseArmed and matchesKey("FreeMouse", input.KeyCode) then
+		freeMouseArmed = false
+		setMouseFree(not mouseFree)
+		notify(if mouseFree then "Mouse: FREE" else "Mouse: locked", if mouseFree then COLORS.Tracking else COLORS.SubText)
+	end
+end)
+
+connect(UserInputService.WindowFocusReleased, function()
+	freeMouseArmed = false
+end)
+
+connect(UserInputService.WindowFocused, function()
+	-- Quay lại bằng Alt+Tab: Alt vẫn đang giữ ngay lúc vừa focus, bỏ qua lần nhấn đó
+	freeMouseArmed = false
+	ignoreFreeMouseUntil = os.clock() + 0.3
 end)
 
 --// Targeting
@@ -990,6 +1319,179 @@ local function updateEsp(originPos)
 	end
 end
 
+--// ESP box + tracer + snap line (vẽ 2D trên overlay)
+
+local overlayTags = {} -- [Model] = { box, stroke, tracer }
+
+local BOX_CORNERS = {}
+for _, x in { -1, 1 } do
+	for _, y in { -1, 1 } do
+		for _, z in { -1, 1 } do
+			table.insert(BOX_CORNERS, Vector3.new(x, y, z) / 2)
+		end
+	end
+end
+
+-- Khung 2D bao quanh model: chiếu 8 góc bounding box lên màn hình; nil nếu có góc nằm sau camera
+local function getScreenBox(camera, model)
+	local cframe, size = model:GetBoundingBox()
+	local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+	for _, cornerOffset in BOX_CORNERS do
+		local point = camera:WorldToViewportPoint(cframe:PointToWorldSpace(cornerOffset * size))
+		if point.Z <= 0 then
+			return nil
+		end
+		minX, minY = math.min(minX, point.X), math.min(minY, point.Y)
+		maxX, maxY = math.max(maxX, point.X), math.max(maxY, point.Y)
+	end
+	return Vector2.new(minX, minY), Vector2.new(maxX, maxY)
+end
+
+local function getOverlayTag(model)
+	local tag = overlayTags[model]
+	if not tag then
+		local box = create("Frame", { BackgroundTransparency = 1, Visible = false, Parent = overlay })
+		tag = {
+			box = box,
+			stroke = create("UIStroke", { Thickness = 1.5, Parent = box }),
+			tracer = makeLine(overlay),
+		}
+		overlayTags[model] = tag
+	end
+	return tag
+end
+
+local function updateOverlay(camera, originPos, fovCenter, targetModel, targetPart, stateColor)
+	for model, tag in overlayTags do
+		if not trackedModels[model] then
+			tag.box:Destroy()
+			tag.tracer:Destroy()
+			overlayTags[model] = nil
+		end
+	end
+
+	local viewport = camera.ViewportSize
+	local tracerOrigin = Vector2.new(viewport.X / 2, viewport.Y)
+	local wantOverlay = settings.ESPBoxes or settings.Tracers
+	for model, humanoid in trackedModels do
+		local anchor = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or model:FindFirstChild("Head")
+		local topLeft, bottomRight = nil, nil
+		if
+			wantOverlay
+			and anchor
+			and isAlive(model, humanoid)
+			and (anchor.Position - originPos).Magnitude <= settings.MaxDistance
+		then
+			topLeft, bottomRight = getScreenBox(camera, model)
+		end
+		local tag = overlayTags[model]
+		if not topLeft then
+			if tag then
+				tag.box.Visible = false
+				tag.tracer.Visible = false
+			end
+			continue
+		end
+
+		tag = getOverlayTag(model)
+		local team = getModelTeam(model)
+		local color = if model == targetModel then stateColor elseif team then getTeamColor(team) else COLORS.Text
+		tag.box.Visible = settings.ESPBoxes
+		tag.box.Position = UDim2.fromOffset(topLeft.X, topLeft.Y)
+		tag.box.Size = UDim2.fromOffset(bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y)
+		tag.stroke.Color = color
+		if settings.Tracers then
+			placeLine(tag.tracer, tracerOrigin, Vector2.new((topLeft.X + bottomRight.X) / 2, bottomRight.Y))
+			tag.tracer.BackgroundColor3 = color
+		else
+			tag.tracer.Visible = false
+		end
+	end
+
+	-- Snap line: từ tâm FOV tới part đang ngắm
+	local snapPoint = nil
+	if settings.SnapLine and targetPart then
+		local point, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+		snapPoint = if onScreen then Vector2.new(point.X, point.Y) else nil
+	end
+	if snapPoint then
+		placeLine(snapLine, fovCenter, snapPoint)
+		snapLine.BackgroundColor3 = stateColor
+	else
+		snapLine.Visible = false
+	end
+end
+
+local function updateTargetInfo(targetModel, targetPart, originPos)
+	local humanoid = targetModel and trackedModels[targetModel]
+	if not (settings.TargetInfo and humanoid and targetPart) then
+		infoCard.Visible = false
+		return
+	end
+	local team = getModelTeam(targetModel)
+	local health = math.clamp(humanoid.Health / math.max(humanoid.MaxHealth, 1), 0, 1)
+	infoCard.Visible = true
+	infoName.Text = targetModel.Name
+	infoName.TextColor3 = if team then getTeamColor(team) else COLORS.Text
+	infoDistance.Text = string.format("%d studs", math.floor((targetPart.Position - originPos).Magnitude))
+	infoFill.Size = UDim2.fromScale(health, 1)
+	infoFill.BackgroundColor3 = COLORS.HealthLow:Lerp(COLORS.HealthHigh, health)
+	infoDetail.Text = string.format(
+		"%d / %d HP  ·  %s%s",
+		math.ceil(humanoid.Health),
+		math.floor(humanoid.MaxHealth),
+		targetPart.Name,
+		if team then "  ·  " .. team else ""
+	)
+end
+
+--// Auto shoot: bóp cò Tool đang cầm (vd. súng Gun) khi tâm màn hình nằm trên mục tiêu đang khóa
+
+local crosshairParams = RaycastParams.new()
+crosshairParams.FilterType = Enum.RaycastFilterType.Exclude
+crosshairParams.IgnoreWater = true
+
+local function isCrosshairOn(camera, model)
+	local viewport = camera.ViewportSize
+	local ray = camera:ViewportPointToRay(viewport.X / 2, viewport.Y / 2)
+	local ignore = { camera }
+	if player.Character then
+		table.insert(ignore, player.Character)
+	end
+	crosshairParams.FilterDescendantsInstances = ignore
+	local result = workspace:Raycast(ray.Origin, ray.Direction * (settings.MaxDistance + 50), crosshairParams)
+	return result ~= nil and result.Instance:IsDescendantOf(model)
+end
+
+local function getEquippedTool()
+	local character = player.Character
+	return character and character:FindFirstChildOfClass("Tool")
+end
+
+local autoFiringTool = nil
+local lastAutoActivate = 0
+
+-- tool = Tool cần giữ cò, nil = thả cò. Tool:Activate/Deactivate làm GunClient nhận Activated/Deactivated như bấm chuột
+local function setAutoFire(tool)
+	if autoFiringTool ~= tool then
+		if autoFiringTool then
+			pcall(autoFiringTool.Deactivate, autoFiringTool)
+		end
+		autoFiringTool = tool
+		if tool then
+			pcall(tool.Activate, tool)
+			lastAutoActivate = os.clock()
+		end
+	elseif tool and tool:GetAttribute("Automatic") == false then
+		-- Súng bán tự động: bóp cò lại theo FireRate
+		if os.clock() - lastAutoActivate >= (tool:GetAttribute("FireRate") or 0.2) then
+			pcall(tool.Deactivate, tool)
+			pcall(tool.Activate, tool)
+			lastAutoActivate = os.clock()
+		end
+	end
+end
+
 --// Main loop: chạy ngay sau camera mặc định để ghi đè hướng nhìn
 
 local lockedModel = nil
@@ -1004,6 +1506,7 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 		return
 	end
 	local mousePos = UserInputService:GetMouseLocation()
+	local fovCenter = if settings.FOVOrigin == "Center" then camera.ViewportSize / 2 else mousePos
 	local root = getCharacterRoot()
 	local originPos = if root then root.Position else camera.CFrame.Position
 
@@ -1016,12 +1519,12 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 
 	-- Đang aim thì giữ mục tiêu cũ tới khi nó chết / bị che / ra khỏi màn hình, tránh nhảy mục tiêu
 	local targetModel, targetPart = nil, nil
-	if holding and lockedModel then
-		targetPart = keepLock(camera, lockedModel, mousePos, originPos)
+	if holding and lockedModel and settings.StickyLock then
+		targetPart = keepLock(camera, lockedModel, fovCenter, originPos)
 		targetModel = if targetPart then lockedModel else nil
 	end
 	if not targetPart and settings.Enabled then
-		targetModel, targetPart = findTarget(camera, mousePos, originPos)
+		targetModel, targetPart = findTarget(camera, fovCenter, originPos)
 	end
 	local aiming = holding and targetPart ~= nil
 	lockedModel = if aiming then targetModel else nil
@@ -1034,7 +1537,7 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 
 	local stateColor = if aiming then COLORS.Locked elseif targetPart then COLORS.Tracking else COLORS.Accent
 	fovCircle.Visible = settings.Enabled and settings.ShowFOV
-	fovCircle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
+	fovCircle.Position = UDim2.fromOffset(fovCenter.X, fovCenter.Y)
 	cursorDot.Visible = mouseFree
 	cursorDot.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
 	fovCircle.Size = UDim2.fromOffset(settings.FOV * 2, settings.FOV * 2)
@@ -1062,17 +1565,23 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 	end
 
 	updateEsp(originPos)
+	updateOverlay(camera, originPos, fovCenter, targetModel, targetPart, stateColor)
+	updateTargetInfo(targetModel, targetPart, originPos)
+	setAutoFire(
+		if settings.AutoShoot and aiming and isCrosshairOn(camera, targetModel) then getEquippedTool() else nil
+	)
 end)
 
 --// X (hoặc nút X trên menu): tắt hẳn script, gỡ mọi kết nối và xóa toàn bộ UI
 
 local unloaded = false
 
-local function unload()
+unload = function()
 	if unloaded then
 		return
 	end
 	unloaded = true
+	setAutoFire(nil)
 	RunService:UnbindFromRenderStep("AimLock")
 	for _, connection in connections do
 		connection:Disconnect()
@@ -1089,8 +1598,3 @@ local function unload()
 end
 
 closeButton.MouseButton1Click:Connect(unload)
-connect(UserInputService.InputBegan, function(input, processed)
-	if not processed and input.KeyCode == UNLOAD_KEY then
-		unload()
-	end
-end)
