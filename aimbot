@@ -4,7 +4,9 @@
 -- Team: người chơi dùng Player.Team, NPC dùng attribute "Team" (string) trên Model, vd: Team = "Red".
 
 local GuiService = game:GetService("GuiService")
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
 local TweenService = game:GetService("TweenService")
@@ -18,6 +20,8 @@ local keybinds = {
 	Menu = Enum.KeyCode.RightShift,
 	Toggle = Enum.KeyCode.Q,
 	FreeMouse = Enum.KeyCode.LeftAlt,
+	Fly = Enum.KeyCode.F,
+	Switch = Enum.KeyCode.C,
 	Unload = Enum.KeyCode.X,
 }
 local DEFAULT_KEYBINDS = table.clone(keybinds)
@@ -52,6 +56,9 @@ local AIM_KEYS = {
 local settings = {
 	Enabled = true,
 	AimKey = "Right mouse", -- "Right mouse" | "Left mouse" | "Always"
+	AimActivation = "Hold", -- "Hold" (giữ phím mới aim) | "Toggle" (bấm 1 lần khóa, bấm lại thả)
+	IgnoreForceField = true, -- bỏ qua ai đang có khiên spawn (ForceField), bắn cũng không mất máu
+	TargetMode = "Team", -- "Team" (lọc theo loại / team) | "Pick players" (chỉ ngắm những ai được tick)
 	TargetType = "Both", -- "Both" | "Players only" | "Dummies only"
 	TargetPart = "Head", -- "Head" | "Head > Body" (đầu bị che thì ngắm thân) | "Torso" | "Root"
 	TeamCheck = true, -- bỏ qua đồng đội (người chơi cùng team / NPC có attribute Team trùng tên team mình)
@@ -59,8 +66,11 @@ local settings = {
 	Priority = "Cursor", -- "Cursor" | "Distance" | "Lowest HP"
 	WallCheck = true,
 	FOVOrigin = "Mouse", -- "Mouse" | "Center" (tâm màn hình, hợp khi cầm súng vì súng bắn về tâm)
+	IgnoreFOV = false, -- 360°: bỏ giới hạn FOV, xoay tới cả mục tiêu sau lưng (vẫn trong Max distance)
 	StickyLock = true, -- giữ mục tiêu tới khi mất; tắt thì mỗi frame chọn lại mục tiêu tốt nhất
 	AutoShoot = false, -- tự bóp cò Tool đang cầm khi tâm màn hình nằm trên mục tiêu đang khóa
+	AutoShootMode = "1 - Hold", -- "1 - Hold" (giữ cò) | "2 - Click" (nhấn-nhả mỗi ClickDelay giây)
+	ClickDelay = 0.1,
 	ShowFOV = true,
 	Highlight = true,
 	ESP = false,
@@ -68,13 +78,25 @@ local settings = {
 	Tracers = false,
 	SnapLine = false,
 	TargetInfo = true,
+	TargetMarker = true,
 	Notifications = true,
 	FOV = 150,
 	MaxDistance = 1000,
 	Smoothness = 2,
 	Prediction = 0,
+	MoveEnabled = false, -- bật thì ép WalkSpeed / JumpPower của nhân vật mình, tắt thì trả về giá trị gốc
+	WalkSpeed = 16,
+	JumpPower = 50,
+	Fly = false, -- không lưu qua lần vào game sau (vào game là đứng dưới đất)
+	FlySpeed = 50,
+	Accent = "Blue", -- màu chủ đạo của menu (xem ACCENT_COLORS)
+	MenuScale = 1,
+	MenuTransparency = 0, -- %
 }
 local DEFAULT_SETTINGS = table.clone(settings)
+
+-- Mục tiêu được tick ở chế độ "Pick players": ["player:<UserId>" | "npc:<tên model>"] = true
+local selectedTargets = {}
 
 local COLORS = {
 	Window = Color3.fromRGB(20, 22, 28),
@@ -88,6 +110,15 @@ local COLORS = {
 	SubText = Color3.fromRGB(140, 146, 160),
 	HealthLow = Color3.fromRGB(255, 70, 70),
 	HealthHigh = Color3.fromRGB(80, 230, 120),
+}
+
+local ACCENT_COLORS = {
+	Blue = Color3.fromRGB(0, 170, 255),
+	Purple = Color3.fromRGB(150, 100, 255),
+	Green = Color3.fromRGB(60, 200, 120),
+	Red = Color3.fromRGB(255, 80, 100),
+	Orange = Color3.fromRGB(255, 150, 50),
+	Pink = Color3.fromRGB(255, 105, 180),
 }
 
 --// Tracking: cache mọi Model có Humanoid trong workspace thay vì quét lại mỗi frame
@@ -128,6 +159,12 @@ local function getModelTeam(model)
 	end
 	local attribute = model:GetAttribute("Team")
 	return if type(attribute) == "string" and attribute ~= "" then attribute else nil
+end
+
+-- Người chơi theo UserId (giữ nguyên khi respawn), NPC theo tên model
+local function getTargetKey(model)
+	local owner = Players:GetPlayerFromCharacter(model)
+	return if owner then "player:" .. owner.UserId else "npc:" .. model.Name
 end
 
 local TEAM_COLOR_WORDS = {
@@ -300,6 +337,24 @@ end
 
 local snapLine = makeLine(overlay)
 
+-- Dấu hình thoi xoay ngay trên part đang ngắm
+local targetMarker = create("Frame", {
+	Name = "TargetMarker",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.fromOffset(16, 16),
+	Rotation = 45,
+	BackgroundTransparency = 1,
+	Visible = false,
+	Parent = overlay,
+})
+local targetMarkerStroke = create("UIStroke", { Thickness = 2, Parent = targetMarker })
+local targetMarkerDot = create("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromOffset(4, 4),
+	Parent = targetMarker,
+}, { corner(UDim.new(1, 0)) })
+
 -- Thẻ thông tin mục tiêu ở giữa phía trên màn hình
 local infoCard = create("Frame", {
 	Name = "TargetInfo",
@@ -385,7 +440,7 @@ end
 local window = create("Frame", {
 	Name = "Window",
 	Position = UDim2.new(0, 24, 0.5, -170),
-	Size = UDim2.fromOffset(250, 0),
+	Size = UDim2.fromOffset(270, 0),
 	AutomaticSize = Enum.AutomaticSize.Y,
 	BackgroundColor3 = COLORS.Window,
 	Parent = gui,
@@ -394,6 +449,9 @@ local window = create("Frame", {
 	create("UIStroke", { Color = COLORS.Border }),
 	listLayout(),
 })
+
+-- Phóng to / thu nhỏ cả menu (thanh Menu scale ở tab Misc)
+local uiScale = create("UIScale", { Parent = window })
 
 local header = create("TextButton", {
 	Name = "Header",
@@ -553,6 +611,36 @@ end)
 --// Tabs
 
 local pages, tabButtons = {}, {}
+local PAGE_MAX_HEIGHT = 430
+local pageFits = {}
+
+-- Trang cao tối đa sao cho đáy menu không lọt khỏi màn hình (tính cả Menu scale và vị trí menu)
+local function getPageMaxHeight()
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return PAGE_MAX_HEIGHT
+	end
+	local scale = uiScale.Scale
+	-- Phần khung cố định (header, tab, footer) + padding trên dưới của vùng trang
+	local chrome = 20
+	for _, child in window:GetChildren() do
+		if child:IsA("GuiObject") and child.Visible and child ~= pagesHolder then
+			chrome += child.AbsoluteSize.Y / scale
+		end
+	end
+	local screenBottom = camera.ViewportSize.Y - GuiService:GetGuiInset().Y - 12
+	local available = (screenBottom - window.AbsolutePosition.Y) / scale - chrome
+	return math.clamp(available, 120, PAGE_MAX_HEIGHT)
+end
+
+local function refitPages()
+	for _, fit in pageFits do
+		fit()
+	end
+end
+uiScale:GetPropertyChangedSignal("Scale"):Connect(refitPages)
+window:GetPropertyChangedSignal("AbsolutePosition"):Connect(refitPages)
+connect(workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"), refitPages)
 
 local function selectTab(name)
 	for tabName, page in pages do
@@ -567,23 +655,42 @@ local function makePage(order, name)
 	local button = create("TextButton", {
 		Name = name .. "Tab",
 		LayoutOrder = order,
-		Size = UDim2.new(1 / 4, -5, 0, 24),
+		Size = UDim2.new(1 / 5, -5, 0, 24),
 		BackgroundColor3 = COLORS.Row,
 		AutoButtonColor = false,
 		Font = Enum.Font.GothamBold,
-		TextSize = 12,
+		TextScaled = true,
 		Text = name,
 		Parent = tabBar,
-	}, { corner() })
-	local page = create("Frame", {
+	}, {
+		corner(),
+		-- 5 tab nên chữ tự co cho vừa, tối đa 12px
+		create("UITextSizeConstraint", { MaxTextSize = 12 }),
+		create("UIPadding", { PaddingLeft = UDim.new(0, 3), PaddingRight = UDim.new(0, 3) }),
+	})
+	-- Tab dài quá PAGE_MAX_HEIGHT thì cuộn được, menu không dài quá màn hình
+	local layout = listLayout(6)
+	local page = create("ScrollingFrame", {
 		Name = name,
 		LayoutOrder = order,
 		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = COLORS.SubText,
+		VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar,
 		BackgroundTransparency = 1,
 		Visible = false,
 		Parent = pagesHolder,
-	}, { listLayout(6) })
+	}, { layout })
+	local function fit()
+		-- AbsoluteContentSize đã nhân UIScale nên chia lại để ra kích thước gốc
+		page.Size = UDim2.new(1, 0, 0, math.min(layout.AbsoluteContentSize.Y / uiScale.Scale, getPageMaxHeight()))
+	end
+	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fit)
+	table.insert(pageFits, fit)
+	fit()
 	button.MouseButton1Click:Connect(function()
 		selectTab(name)
 	end)
@@ -833,20 +940,29 @@ end
 local aimPage = makePage(1, "Aim")
 local targetPage = makePage(2, "Target")
 local visualsPage = makePage(3, "Visuals")
-local miscPage = makePage(4, "Misc")
+local movePage = makePage(4, "Move")
+local miscPage = makePage(5, "Misc")
 
 makeToggle(aimPage, 1, "Enabled", "Enabled")
 makeDropdown(aimPage, 2, "Aim key", "AimKey", function()
 	return { "Right mouse", "Left mouse", "Always" }
 end)
-makeDropdown(aimPage, 3, "FOV origin", "FOVOrigin", function()
+makeDropdown(aimPage, 3, "Aim activation", "AimActivation", function()
+	return { "Hold", "Toggle" }
+end)
+makeDropdown(aimPage, 4, "FOV origin", "FOVOrigin", function()
 	return { "Mouse", "Center" }
 end)
-makeSlider(aimPage, 4, "FOV radius", "FOV", 30, 1000, 5, "%.0f px")
-makeSlider(aimPage, 5, "Smoothness", "Smoothness", 0, 10, 0.5, "%.1f")
-makeSlider(aimPage, 6, "Prediction", "Prediction", 0, 0.3, 0.01, "%.2f s")
-makeToggle(aimPage, 7, "Sticky lock", "StickyLock")
-makeToggle(aimPage, 8, "Auto shoot (gun)", "AutoShoot")
+makeSlider(aimPage, 5, "FOV radius", "FOV", 30, 1000, 5, "%.0f px")
+makeSlider(aimPage, 6, "Smoothness", "Smoothness", 0, 10, 0.5, "%.1f")
+makeSlider(aimPage, 7, "Prediction", "Prediction", 0, 0.3, 0.01, "%.2f s")
+makeToggle(aimPage, 8, "Sticky lock", "StickyLock")
+makeToggle(aimPage, 9, "Auto shoot (gun)", "AutoShoot")
+makeDropdown(aimPage, 10, "Auto shoot mode", "AutoShootMode", function()
+	return { "1 - Hold", "2 - Click" }
+end)
+makeSlider(aimPage, 11, "Click delay (mode 2)", "ClickDelay", 0.05, 1, 0.05, "%.2f s")
+makeToggle(aimPage, 12, "360° (ignore FOV)", "IgnoreFOV")
 
 makeDropdown(targetPage, 0, "Target type", "TargetType", function()
 	return { "Both", "Players only", "Dummies only" }
@@ -855,7 +971,7 @@ makeToggle(targetPage, 1, "Skip teammates", "TeamCheck")
 makeDropdown(targetPage, 2, "Target team", "TeamFilter", getTeamOptions, teamOptionColor)
 makeToggle(targetPage, 3, "Wall check", "WallCheck")
 makeDropdown(targetPage, 4, "Target part", "TargetPart", function()
-	return { "Head", "Head > Body", "Torso", "Root" }
+	return { "Head", "Head > Body", "Closest", "Torso", "Root" }
 end, nil, renderTitle)
 makeDropdown(targetPage, 5, "Priority", "Priority", function()
 	return { "Cursor", "Distance", "Lowest HP" }
@@ -864,7 +980,7 @@ end)
 -- Cho biết mình đang ở team nào để hiểu Skip teammates đang bỏ qua ai
 local myTeamLabel = label({
 	Name = "MyTeam",
-	LayoutOrder = -1,
+	LayoutOrder = -2,
 	Size = UDim2.new(1, 0, 0, 18),
 	RichText = true,
 	TextColor3 = COLORS.SubText,
@@ -883,6 +999,215 @@ connect(player:GetPropertyChangedSignal("Team"), renderMyTeam)
 connect(player:GetPropertyChangedSignal("Neutral"), renderMyTeam)
 
 makeSlider(targetPage, 6, "Max distance", "MaxDistance", 50, 2000, 50, "%.0f studs")
+makeToggle(targetPage, 7, "Skip spawn shield", "IgnoreForceField")
+
+--// Pick players: chỉ ngắm những người / NPC được tick trong danh sách (chọn 1, 2, 3... tùy ý)
+
+local picker = create("Frame", {
+	Name = "PlayerPicker",
+	LayoutOrder = -1,
+	Size = UDim2.new(1, 0, 0, 0),
+	AutomaticSize = Enum.AutomaticSize.Y,
+	BackgroundColor3 = COLORS.Row,
+	Visible = false,
+	Parent = targetPage,
+}, {
+	corner(),
+	listLayout(4),
+	create("UIPadding", {
+		PaddingTop = UDim.new(0, 6),
+		PaddingBottom = UDim.new(0, 6),
+		PaddingLeft = UDim.new(0, 6),
+		PaddingRight = UDim.new(0, 6),
+	}),
+})
+
+local pickerHeader = create("Frame", {
+	LayoutOrder = 1,
+	Size = UDim2.new(1, 0, 0, 20),
+	BackgroundTransparency = 1,
+	Parent = picker,
+})
+local pickerCountLabel = label({
+	Position = UDim2.fromOffset(4, 0),
+	Size = UDim2.new(1, -112, 1, 0),
+	Font = Enum.Font.GothamBold,
+	TextSize = 12,
+	Parent = pickerHeader,
+})
+
+local function pickerButton(name, text, offsetX)
+	return create("TextButton", {
+		Name = name,
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, offsetX, 0.5, 0),
+		Size = UDim2.fromOffset(52, 18),
+		BackgroundColor3 = COLORS.Window,
+		Font = Enum.Font.GothamBold,
+		TextSize = 11,
+		TextColor3 = COLORS.SubText,
+		Text = text,
+		Parent = pickerHeader,
+	}, { corner(UDim.new(0, 4)) })
+end
+local clearButton = pickerButton("Clear", "Clear", 0)
+local refreshButton = pickerButton("Refresh", "Refresh", -56)
+
+local pickerList = create("ScrollingFrame", {
+	Name = "List",
+	LayoutOrder = 2,
+	Size = UDim2.new(1, 0, 0, 0),
+	CanvasSize = UDim2.new(),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ScrollBarThickness = 4,
+	ScrollBarImageColor3 = COLORS.Off,
+	BackgroundTransparency = 1,
+	Parent = picker,
+}, { listLayout(2) })
+
+local PICKER_ROW_HEIGHT = 24
+local PICKER_MAX_ROWS = 6
+local pickedCount = 0
+
+-- Người chơi khác trước, rồi tới NPC (gộp theo tên, nên dummy hồi sinh vẫn giữ được tick)
+local function getPickCandidates()
+	local candidates = {}
+	for _, other in Players:GetPlayers() do
+		if other ~= player then
+			table.insert(candidates, {
+				key = "player:" .. other.UserId,
+				name = if other.DisplayName ~= other.Name then `{other.DisplayName} (@{other.Name})` else other.Name,
+				kind = "Player",
+				team = if other.Team and not other.Neutral then other.Team.Name else nil,
+			})
+		end
+	end
+	local seenNames = {}
+	for model in trackedModels do
+		if model ~= player.Character and not Players:GetPlayerFromCharacter(model) and not seenNames[model.Name] then
+			seenNames[model.Name] = true
+			table.insert(candidates, { key = "npc:" .. model.Name, name = model.Name, kind = "NPC", team = getModelTeam(model) })
+		end
+	end
+	table.sort(candidates, function(a, b)
+		if a.kind ~= b.kind then
+			return a.kind == "Player"
+		end
+		return string.lower(a.name) < string.lower(b.name)
+	end)
+	return candidates
+end
+
+local function refreshPicker()
+	for _, child in pickerList:GetChildren() do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+	local candidates = getPickCandidates()
+	pickedCount = 0
+	for i, candidate in candidates do
+		local selected = selectedTargets[candidate.key] == true
+		if selected then
+			pickedCount += 1
+		end
+		local row = create("TextButton", {
+			Name = candidate.name,
+			LayoutOrder = i,
+			Size = UDim2.new(1, -6, 0, PICKER_ROW_HEIGHT),
+			BackgroundColor3 = if selected then Color3.fromRGB(0, 60, 95) else COLORS.Window,
+			AutoButtonColor = false,
+			Text = "",
+			Parent = pickerList,
+		}, { corner(UDim.new(0, 4)) })
+		local checkbox = create("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 6, 0.5, 0),
+			Size = UDim2.fromOffset(14, 14),
+			BackgroundColor3 = if selected then COLORS.Accent else COLORS.Off,
+			Parent = row,
+		}, { corner(UDim.new(0, 3)) })
+		if selected then
+			create("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(6, 6),
+				BackgroundColor3 = Color3.new(1, 1, 1),
+				Parent = checkbox,
+			}, { corner(UDim.new(0, 2)) })
+		end
+		label({
+			Position = UDim2.fromOffset(26, 0),
+			Size = UDim2.new(1, -74, 1, 0),
+			TextSize = 12,
+			Text = candidate.name,
+			TextColor3 = if candidate.team then getTeamColor(candidate.team) else COLORS.Text,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+		label({
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -6, 0, 0),
+			Size = UDim2.new(0, 40, 1, 0),
+			TextSize = 10,
+			TextColor3 = COLORS.SubText,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = candidate.kind,
+			Parent = row,
+		})
+		row.MouseButton1Click:Connect(function()
+			selectedTargets[candidate.key] = if selectedTargets[candidate.key] then nil else true
+			refreshPicker()
+		end)
+	end
+	if #candidates == 0 then
+		label({
+			Size = UDim2.new(1, 0, 0, PICKER_ROW_HEIGHT),
+			TextSize = 12,
+			TextColor3 = COLORS.SubText,
+			Text = "  No other players or NPCs",
+			Parent = pickerList,
+		})
+	end
+	pickerList.Size = UDim2.new(1, 0, 0, math.clamp(#candidates, 1, PICKER_MAX_ROWS) * (PICKER_ROW_HEIGHT + 2))
+	pickerCountLabel.Text = `{pickedCount} picked`
+	pickerCountLabel.TextColor3 = if pickedCount > 0 then COLORS.Accent else COLORS.SubText
+end
+
+clearButton.MouseButton1Click:Connect(function()
+	table.clear(selectedTargets)
+	refreshPicker()
+end)
+refreshButton.MouseButton1Click:Connect(refreshPicker)
+
+-- Danh sách tự cập nhật khi có người vào / rời game
+local function refreshPickerIfShown()
+	if picker.Visible then
+		task.defer(refreshPicker)
+	end
+end
+connect(Players.PlayerAdded, refreshPickerIfShown)
+connect(Players.PlayerRemoving, refreshPickerIfShown)
+
+-- Ở chế độ Pick players thì ẩn các bộ lọc team (không còn tác dụng)
+local teamModeRows = { targetPage.TargetType, targetPage.TeamCheck, targetPage.TeamFilter }
+
+local function renderTargetMode()
+	local picking = settings.TargetMode == "Pick players"
+	picker.Visible = picking
+	for _, row in teamModeRows do
+		row.Visible = not picking
+	end
+	if picking then
+		refreshPicker()
+	end
+end
+
+makeDropdown(targetPage, -3, "Target mode", "TargetMode", function()
+	return { "Team", "Pick players" }
+end, nil, renderTargetMode)
+renderTargetMode()
+table.insert(controlRenderers, renderTargetMode)
 
 makeToggle(visualsPage, 1, "Show FOV circle", "ShowFOV")
 makeToggle(visualsPage, 2, "Highlight target", "Highlight")
@@ -891,12 +1216,62 @@ makeToggle(visualsPage, 4, "ESP boxes", "ESPBoxes")
 makeToggle(visualsPage, 5, "Tracers", "Tracers")
 makeToggle(visualsPage, 6, "Snap line", "SnapLine")
 makeToggle(visualsPage, 7, "Target info card", "TargetInfo")
+makeToggle(visualsPage, 8, "Target marker", "TargetMarker")
+
+-- Move: tốc độ chạy + lực nhảy của nhân vật mình (áp dụng mỗi frame trong main loop)
+label({
+	LayoutOrder = 0,
+	Size = UDim2.new(1, 0, 0, 16),
+	TextSize = 11,
+	TextColor3 = COLORS.SubText,
+	Text = " Your character only · off = game defaults",
+	Parent = movePage,
+})
+makeToggle(movePage, 1, "Custom speed & jump", "MoveEnabled")
+makeSlider(movePage, 2, "Walk speed", "WalkSpeed", 0, 150, 1, "%.0f")
+makeSlider(movePage, 3, "Jump power", "JumpPower", 0, 300, 1, "%.0f")
+
+local moveDefaultButton = create("TextButton", {
+	Name = "MoveDefault",
+	LayoutOrder = 4,
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = COLORS.Row,
+	Font = Enum.Font.GothamBold,
+	TextSize = 12,
+	TextColor3 = COLORS.Accent,
+	Text = "Default (16 / 50)",
+	Parent = movePage,
+}, { corner() })
+moveDefaultButton.MouseButton1Click:Connect(function()
+	settings.WalkSpeed = DEFAULT_SETTINGS.WalkSpeed
+	settings.JumpPower = DEFAULT_SETTINGS.JumpPower
+	for _, render in controlRenderers do
+		render()
+	end
+end)
+
+makeToggle(movePage, 5, "Fly", "Fly")
+makeSlider(movePage, 6, "Fly speed", "FlySpeed", 10, 300, 5, "%.0f")
+local flyHintLabel = label({
+	LayoutOrder = 7,
+	Size = UDim2.new(1, 0, 0, 16),
+	TextSize = 11,
+	TextColor3 = COLORS.SubText,
+	Parent = movePage,
+})
+
+local function renderFlyHint()
+	flyHintLabel.Text = ` Fly key: {keyName(keybinds.Fly)}  ·  WASD + Space up / Ctrl down`
+end
+renderFlyHint()
 
 -- Misc: đổi phím tắt (bấm nút rồi nhấn phím mới, Esc để hủy), thông báo, reset
 local KEYBIND_LABELS = {
 	Menu = "Menu",
 	Toggle = "Aim on/off",
 	FreeMouse = "Free mouse",
+	Fly = "Fly",
+	Switch = "Switch target",
 	Unload = "Unload",
 }
 local capturingAction = nil
@@ -907,6 +1282,7 @@ local function renderKeybind(action)
 	local capturing = capturingAction == action
 	button.Text = if capturing then "press a key..." else keyName(keybinds[action])
 	button.TextColor3 = if capturing then COLORS.Tracking else COLORS.Accent
+	renderFlyHint()
 end
 
 local function makeKeybind(order, action)
@@ -951,12 +1327,14 @@ label({
 makeKeybind(1, "Menu")
 makeKeybind(2, "Toggle")
 makeKeybind(3, "FreeMouse")
-makeKeybind(4, "Unload")
-makeToggle(miscPage, 5, "Notifications", "Notifications")
+makeKeybind(4, "Fly")
+makeKeybind(5, "Switch")
+makeKeybind(6, "Unload")
+makeToggle(miscPage, 7, "Notifications", "Notifications")
 
 local resetButton = create("TextButton", {
 	Name = "Reset",
-	LayoutOrder = 6,
+	LayoutOrder = 20,
 	Size = UDim2.new(1, 0, 0, 28),
 	BackgroundColor3 = COLORS.Row,
 	Font = Enum.Font.GothamBold,
@@ -974,6 +1352,7 @@ resetButton.MouseButton1Click:Connect(function()
 		keybinds[action] = keyCode
 	end
 	capturingAction = nil
+	table.clear(selectedTargets)
 	for _, render in controlRenderers do
 		render()
 	end
@@ -983,6 +1362,272 @@ resetButton.MouseButton1Click:Connect(function()
 	renderTitle()
 	renderHint()
 	notify("Settings reset", COLORS.Accent)
+end)
+
+-- Preset: đổi nhanh cả bộ thông số
+local PRESETS = {
+	{
+		name = "Soft",
+		values = {
+			FOV = 90,
+			Smoothness = 6,
+			Prediction = 0,
+			WallCheck = true,
+			TargetPart = "Head > Body",
+			StickyLock = true,
+			AutoShoot = false,
+			ShowFOV = true,
+			ESP = false,
+			ESPBoxes = false,
+			Tracers = false,
+			SnapLine = false,
+		},
+	},
+	{
+		name = "Normal",
+		values = {
+			FOV = 180,
+			Smoothness = 2.5,
+			Prediction = 0.05,
+			WallCheck = true,
+			TargetPart = "Head > Body",
+			StickyLock = true,
+			AutoShoot = false,
+			ShowFOV = true,
+			ESP = true,
+			ESPBoxes = false,
+			Tracers = false,
+			SnapLine = false,
+		},
+	},
+	{
+		name = "Max",
+		values = {
+			FOV = 1000,
+			Smoothness = 0,
+			Prediction = 0.1,
+			WallCheck = false,
+			TargetPart = "Head",
+			StickyLock = true,
+			AutoShoot = true,
+			ShowFOV = false,
+			ESP = true,
+			ESPBoxes = true,
+			Tracers = true,
+			SnapLine = true,
+		},
+	},
+}
+
+local presetRow = create("Frame", {
+	Name = "Presets",
+	LayoutOrder = 8,
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = COLORS.Row,
+	Parent = miscPage,
+}, { corner() })
+label({ Text = "Preset", Position = UDim2.fromOffset(10, 0), Size = UDim2.new(0, 60, 1, 0), Parent = presetRow })
+for i, preset in PRESETS do
+	local button = create("TextButton", {
+		Name = preset.name,
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -6 - (#PRESETS - i) * 52, 0.5, 0),
+		Size = UDim2.fromOffset(48, 20),
+		BackgroundColor3 = COLORS.Window,
+		Font = Enum.Font.GothamBold,
+		TextSize = 11,
+		TextColor3 = COLORS.Accent,
+		Text = preset.name,
+		Parent = presetRow,
+	}, { corner(UDim.new(0, 4)) })
+	button.MouseButton1Click:Connect(function()
+		for key, value in preset.values do
+			settings[key] = value
+		end
+		for _, render in controlRenderers do
+			render()
+		end
+		renderTitle()
+		notify(`Preset: {preset.name}`, COLORS.Accent)
+	end)
+end
+
+-- Giao diện menu: màu chủ đạo, cỡ menu, độ trong suốt
+label({
+	LayoutOrder = 10,
+	Size = UDim2.new(1, 0, 0, 16),
+	TextSize = 11,
+	TextColor3 = COLORS.SubText,
+	Text = " Interface",
+	Parent = miscPage,
+})
+makeDropdown(miscPage, 11, "Theme", "Accent", function()
+	return { "Blue", "Purple", "Green", "Red", "Orange", "Pink" }
+end, function(option)
+	return ACCENT_COLORS[option]
+end)
+makeSlider(miscPage, 12, "Menu scale", "MenuScale", 0.7, 1.4, 0.05, "%.2fx")
+makeSlider(miscPage, 13, "Menu transparency", "MenuTransparency", 0, 60, 5, "%.0f%%")
+
+local currentAccent = COLORS.Accent
+
+-- Gọi mỗi frame; chỉ quét lại màu khi Theme đổi
+local function applyTheme()
+	local accent = ACCENT_COLORS[settings.Accent] or ACCENT_COLORS.Blue
+	if accent ~= currentAccent then
+		-- Đổi mọi chỗ đang dùng màu cũ sang màu mới (nền, chữ, viền)
+		for _, inst in gui:GetDescendants() do
+			if inst:IsA("GuiObject") and inst.BackgroundColor3 == currentAccent then
+				inst.BackgroundColor3 = accent
+			end
+			if (inst:IsA("TextLabel") or inst:IsA("TextButton")) and inst.TextColor3 == currentAccent then
+				inst.TextColor3 = accent
+			end
+			if inst:IsA("UIStroke") and inst.Color == currentAccent then
+				inst.Color = accent
+			end
+		end
+		currentAccent = accent
+		COLORS.Accent = accent
+		for _, render in controlRenderers do
+			render()
+		end
+	end
+	uiScale.Scale = settings.MenuScale
+	window.BackgroundTransparency = settings.MenuTransparency / 100
+end
+
+--// Lưu cài đặt: tự lưu (qua server, DataStore) mỗi khi có thay đổi, tự tải lại khi vào game
+
+local saveStatusLabel = label({
+	Name = "SaveStatus",
+	LayoutOrder = 21,
+	Size = UDim2.new(1, 0, 0, 16),
+	TextSize = 11,
+	TextColor3 = COLORS.SubText,
+	Text = " Settings: loading...",
+	Parent = miscPage,
+})
+
+local DEFAULT_WINDOW_POSITION = window.Position
+local saveRemotes = nil
+local saveEnabled = false
+local stopSaving = false
+local lastSavedJson = nil
+
+local function serializeState()
+	local keys = {}
+	for action, keyCode in keybinds do
+		keys[action] = keyCode.Name
+	end
+	local picked = {}
+	for key in selectedTargets do
+		table.insert(picked, key)
+	end
+	table.sort(picked)
+	local position = window.Position
+	return {
+		settings = settings,
+		keybinds = keys,
+		picked = picked,
+		window = { position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset },
+	}
+end
+
+-- Chỉ nhận key có trong mặc định và đúng kiểu, nên dữ liệu cũ / hỏng không làm lỗi script
+local function applyState(data)
+	if type(data) ~= "table" then
+		return
+	end
+	if type(data.settings) == "table" then
+		for key, value in data.settings do
+			if key ~= "Fly" and DEFAULT_SETTINGS[key] ~= nil and type(value) == type(DEFAULT_SETTINGS[key]) then
+				settings[key] = value
+			end
+		end
+	end
+	if type(data.keybinds) == "table" then
+		for action, name in data.keybinds do
+			local ok, keyCode = pcall(function()
+				return Enum.KeyCode[name]
+			end)
+			if DEFAULT_KEYBINDS[action] and ok and keyCode then
+				keybinds[action] = keyCode
+			end
+		end
+	end
+	if type(data.picked) == "table" then
+		table.clear(selectedTargets)
+		for _, key in data.picked do
+			if type(key) == "string" then
+				selectedTargets[key] = true
+			end
+		end
+	end
+	if type(data.window) == "table" and #data.window == 4 then
+		local ok, position = pcall(UDim2.new, table.unpack(data.window))
+		if ok then
+			window.Position = position
+		end
+	end
+	for _, render in controlRenderers do
+		render()
+	end
+	for action in keybindButtons do
+		renderKeybind(action)
+	end
+	renderTitle()
+	renderHint()
+	-- Màn hình nhỏ hơn lần trước: đưa menu về chỗ mặc định nếu bị lọt ra ngoài
+	task.defer(function()
+		local viewport = workspace.CurrentCamera.ViewportSize
+		local topLeft = window.AbsolutePosition
+		if topLeft.X < -100 or topLeft.Y < -100 or topLeft.X > viewport.X - 60 or topLeft.Y > viewport.Y - 60 then
+			window.Position = DEFAULT_WINDOW_POSITION
+		end
+	end)
+end
+
+local function saveNow()
+	if not saveEnabled or not saveRemotes then
+		return
+	end
+	local ok, json = pcall(HttpService.JSONEncode, HttpService, serializeState())
+	if ok and json ~= lastSavedJson then
+		lastSavedJson = json
+		saveRemotes.Save:FireServer(json)
+	end
+end
+
+task.spawn(function()
+	saveRemotes = ReplicatedStorage:WaitForChild("AimLock", 10)
+	if not saveRemotes then
+		saveStatusLabel.Text = " Settings: not saved (no server script)"
+		return
+	end
+	local ok, success, payload = pcall(saveRemotes.Load.InvokeServer, saveRemotes.Load)
+	if stopSaving then
+		return
+	end
+	if not ok or not success then
+		saveStatusLabel.Text = " Settings: not saved (DataStore off)"
+		saveStatusLabel.TextColor3 = COLORS.Tracking
+		return
+	end
+	if payload then
+		local decoded, data = pcall(HttpService.JSONDecode, HttpService, payload)
+		if decoded then
+			applyState(data)
+			notify("Settings loaded", COLORS.Accent)
+		end
+	end
+	lastSavedJson = HttpService:JSONEncode(serializeState())
+	saveEnabled = true
+	saveStatusLabel.Text = " Settings: auto-saved"
+	while not stopSaving do
+		task.wait(5)
+		saveNow()
+	end
 end)
 
 selectTab("Aim")
@@ -1056,6 +1701,11 @@ local freeMouseArmed = false
 -- Bỏ qua Alt trong 2 giây đầu: Windows hay gửi một cú Alt giả khi đưa cửa sổ game lên trước
 local ignoreFreeMouseUntil = os.clock() + 2
 
+-- Chế độ Aim activation = Toggle: bấm phím aim một lần để khóa, bấm lần nữa để thả
+local aimToggled = false
+-- Bấm phím Switch target: main loop sẽ nhảy sang mục tiêu tốt nhất kế tiếp
+local switchRequested = false
+
 connect(UserInputService.InputBegan, function(input, processed)
 	-- Đang chờ đổi phím: phím kế tiếp là phím mới (Esc để hủy), không kích hoạt chức năng nào
 	if capturingAction and input.UserInputType == Enum.UserInputType.Keyboard then
@@ -1075,6 +1725,16 @@ connect(UserInputService.InputBegan, function(input, processed)
 	if processed then
 		return
 	end
+	local aimInputType = AIM_KEYS[settings.AimKey]
+	if settings.Enabled and settings.AimActivation == "Toggle" and aimInputType and input.UserInputType == aimInputType then
+		local clickingMenu = aimInputType == Enum.UserInputType.MouseButton1
+			and isPointerOverMenu(UserInputService:GetMouseLocation())
+		if not clickingMenu then
+			aimToggled = not aimToggled
+			notify(if aimToggled then "Aim: locked (toggle)" else "Aim: released", if aimToggled then COLORS.Locked else COLORS.SubText)
+		end
+		return
+	end
 	if matchesKey("Menu", input.KeyCode) then
 		window.Visible = not window.Visible
 		if not window.Visible then
@@ -1089,6 +1749,12 @@ connect(UserInputService.InputBegan, function(input, processed)
 		)
 	elseif matchesKey("FreeMouse", input.KeyCode) then
 		freeMouseArmed = os.clock() >= ignoreFreeMouseUntil
+	elseif matchesKey("Fly", input.KeyCode) then
+		settings.Fly = not settings.Fly
+		toggles.Fly()
+		notify(if settings.Fly then "Fly: ON" else "Fly: OFF", if settings.Fly then COLORS.Accent else COLORS.SubText)
+	elseif matchesKey("Switch", input.KeyCode) then
+		switchRequested = true
 	elseif matchesKey("Unload", input.KeyCode) then
 		unload()
 	end
@@ -1181,51 +1847,93 @@ local function passesTypeFilter(model)
 end
 
 local function isValidModel(model, humanoid)
-	return isAlive(model, humanoid) and passesTypeFilter(model) and passesTeamFilter(model)
+	if not isAlive(model, humanoid) then
+		return false
+	end
+	if settings.IgnoreForceField and model:FindFirstChildOfClass("ForceField") then
+		return false
+	end
+	-- Pick players: chỉ xét danh sách đã tick, bỏ qua bộ lọc loại / team
+	if settings.TargetMode == "Pick players" then
+		return selectedTargets[getTargetKey(model)] == true
+	end
+	return passesTypeFilter(model) and passesTeamFilter(model)
 end
 
--- Trả về part để ngắm + khoảng cách tới con trỏ (px) + khoảng cách thật (studs), nil nếu không ngắm được.
--- "Head > Body": thử Head trước, Head bị che thì thử thân. Wall check tắt mà mọi part đều bị che
--- thì vẫn ngắm part đầu tiên (xuyên tường).
-local function evaluate(camera, model, humanoid, mousePos, originPos, maxCursorDistance)
+-- Trả về part để ngắm + độ lệch so với tâm FOV + khoảng cách thật (studs), nil nếu không ngắm được.
+-- Độ lệch: pixel tới tâm FOV; chế độ 360° thì là góc (độ) giữa hướng camera và part.
+-- "Head > Body": thử Head trước, Head bị che thì thử thân. "Closest": part gần tâm FOV nhất còn thấy được.
+-- Wall check tắt mà mọi part đều bị che thì vẫn ngắm part đầu tiên (xuyên tường).
+local function evaluate(camera, model, humanoid, fovCenter, originPos, maxCursorDistance)
 	if not isValidModel(model, humanoid) then
 		return nil
 	end
-	local names = PART_ORDER[settings.TargetPart] or PART_ORDER.Head
-	local needsRaycast = settings.WallCheck or #names > 1
-	local origin = camera.CFrame.Position
-	local hidden = nil
-	for _, name in names do
-		local part = findPart(model, name)
-		if not part then
-			continue
+	local candidates = {}
+	if settings.TargetPart == "Closest" then
+		-- Mọi bộ phận cơ thể nhìn thấy được (HumanoidRootPart tàng hình nên bị bỏ)
+		for _, child in model:GetChildren() do
+			if child:IsA("BasePart") and child.Transparency < 1 then
+				table.insert(candidates, child)
+			end
 		end
+	else
+		for _, name in PART_ORDER[settings.TargetPart] or PART_ORDER.Head do
+			local part = findPart(model, name)
+			if part then
+				table.insert(candidates, part)
+			end
+		end
+	end
+
+	local cameraCFrame = camera.CFrame
+	local scored = {}
+	for _, part in candidates do
 		local distance = (part.Position - originPos).Magnitude
 		if distance > settings.MaxDistance then
 			continue
 		end
-		local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
-		if not onScreen then
-			continue
+		local offset
+		if settings.IgnoreFOV then
+			local direction = (part.Position - cameraCFrame.Position).Unit
+			offset = math.deg(math.acos(math.clamp(cameraCFrame.LookVector:Dot(direction), -1, 1)))
+		else
+			local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
+			if not onScreen then
+				continue
+			end
+			offset = (Vector2.new(screenPos.X, screenPos.Y) - fovCenter).Magnitude
+			if offset > maxCursorDistance then
+				continue
+			end
 		end
-		local cursorDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-		if cursorDistance > maxCursorDistance then
-			continue
-		end
-		if not needsRaycast or isVisible(origin, part, model) then
-			return part, cursorDistance, distance
-		end
-		hidden = hidden or { part, cursorDistance, distance }
+		table.insert(scored, { part = part, offset = offset, distance = distance })
 	end
-	if hidden and not settings.WallCheck then
-		return table.unpack(hidden)
+	if settings.TargetPart == "Closest" then
+		table.sort(scored, function(a, b)
+			return a.offset < b.offset
+		end)
+	end
+
+	local needsRaycast = settings.WallCheck or settings.TargetPart == "Head > Body"
+	for _, entry in scored do
+		if not needsRaycast or isVisible(cameraCFrame.Position, entry.part, model) then
+			return entry.part, entry.offset, entry.distance
+		end
+	end
+	local first = scored[1]
+	if first and not settings.WallCheck then
+		return first.part, first.offset, first.distance
 	end
 	return nil
 end
 
-local function findTarget(camera, mousePos, originPos)
+-- excludeModel: bỏ qua model này (dùng khi bấm Switch target để nhảy sang mục tiêu khác)
+local function findTarget(camera, mousePos, originPos, excludeModel)
 	local bestModel, bestPart, bestScore = nil, nil, math.huge
 	for model, humanoid in trackedModels do
+		if model == excludeModel then
+			continue
+		end
 		local part, cursorDistance, distance = evaluate(camera, model, humanoid, mousePos, originPos, settings.FOV)
 		if not part then
 			continue
@@ -1408,17 +2116,24 @@ local function updateOverlay(camera, originPos, fovCenter, targetModel, targetPa
 		end
 	end
 
-	-- Snap line: từ tâm FOV tới part đang ngắm
-	local snapPoint = nil
-	if settings.SnapLine and targetPart then
+	-- Snap line (từ tâm FOV tới part đang ngắm) + dấu đánh dấu ngay trên part đó
+	local targetPoint = nil
+	if targetPart and (settings.SnapLine or settings.TargetMarker) then
 		local point, onScreen = camera:WorldToViewportPoint(targetPart.Position)
-		snapPoint = if onScreen then Vector2.new(point.X, point.Y) else nil
+		targetPoint = if onScreen then Vector2.new(point.X, point.Y) else nil
 	end
-	if snapPoint then
-		placeLine(snapLine, fovCenter, snapPoint)
+	if targetPoint and settings.SnapLine then
+		placeLine(snapLine, fovCenter, targetPoint)
 		snapLine.BackgroundColor3 = stateColor
 	else
 		snapLine.Visible = false
+	end
+	targetMarker.Visible = targetPoint ~= nil and settings.TargetMarker
+	if targetMarker.Visible then
+		targetMarker.Position = UDim2.fromOffset(targetPoint.X, targetPoint.Y)
+		targetMarker.Rotation = (os.clock() * 90) % 360
+		targetMarkerStroke.Color = stateColor
+		targetMarkerDot.BackgroundColor3 = stateColor
 	end
 end
 
@@ -1471,25 +2186,169 @@ end
 local autoFiringTool = nil
 local lastAutoActivate = 0
 
--- tool = Tool cần giữ cò, nil = thả cò. Tool:Activate/Deactivate làm GunClient nhận Activated/Deactivated như bấm chuột
+-- 1 cú click = nhấn rồi nhả cò ngay (Tool:Activate/Deactivate làm Tool nhận Activated/Deactivated như bấm chuột)
+local function clickTool(tool)
+	pcall(tool.Activate, tool)
+	pcall(tool.Deactivate, tool)
+end
+
+-- tool = Tool cần bắn, nil = thả cò.
+--   Auto shoot 1 (Hold): giữ cò; súng bán tự động thì bóp lại theo FireRate của súng
+--   Auto shoot 2 (Click): nhấn-nhả liên tục mỗi ClickDelay giây (như vòng lặp auto click)
 local function setAutoFire(tool)
+	local clickMode = settings.AutoShootMode == "2 - Click"
 	if autoFiringTool ~= tool then
 		if autoFiringTool then
 			pcall(autoFiringTool.Deactivate, autoFiringTool)
 		end
 		autoFiringTool = tool
 		if tool then
-			pcall(tool.Activate, tool)
+			if clickMode then
+				clickTool(tool)
+			else
+				pcall(tool.Activate, tool)
+			end
 			lastAutoActivate = os.clock()
 		end
-	elseif tool and tool:GetAttribute("Automatic") == false then
-		-- Súng bán tự động: bóp cò lại theo FireRate
-		if os.clock() - lastAutoActivate >= (tool:GetAttribute("FireRate") or 0.2) then
+		return
+	end
+	if not tool then
+		return
+	end
+	local interval = if clickMode
+		then settings.ClickDelay
+		elseif tool:GetAttribute("Automatic") == false then tool:GetAttribute("FireRate") or 0.2
+		else nil
+	if interval and os.clock() - lastAutoActivate >= interval then
+		lastAutoActivate = os.clock()
+		if clickMode then
+			clickTool(tool)
+		else
 			pcall(tool.Deactivate, tool)
 			pcall(tool.Activate, tool)
-			lastAutoActivate = os.clock()
 		end
 	end
+end
+
+--// Move: ép WalkSpeed / JumpPower khi bật; lưu giá trị gốc của từng Humanoid để trả lại khi tắt
+
+local movementOriginals = {} -- [Humanoid] = { WalkSpeed, UseJumpPower, JumpPower, JumpHeight }
+
+local function restoreMovement()
+	for humanoid, original in movementOriginals do
+		if humanoid.Parent then
+			for property, value in original do
+				humanoid[property] = value
+			end
+		end
+		movementOriginals[humanoid] = nil
+	end
+end
+
+local function applyMovement()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not (settings.MoveEnabled and humanoid) then
+		restoreMovement()
+		return
+	end
+	if not movementOriginals[humanoid] then
+		movementOriginals[humanoid] = {
+			WalkSpeed = humanoid.WalkSpeed,
+			UseJumpPower = humanoid.UseJumpPower,
+			JumpPower = humanoid.JumpPower,
+			JumpHeight = humanoid.JumpHeight,
+		}
+	end
+	humanoid.WalkSpeed = settings.WalkSpeed
+	-- R15 mới dùng JumpHeight; bật UseJumpPower để thanh kéo Jump power có tác dụng với mọi loại nhân vật
+	humanoid.UseJumpPower = true
+	humanoid.JumpPower = settings.JumpPower
+end
+
+--// Fly: LinearVelocity đẩy nhân vật theo hướng camera, AlignOrientation giữ người thẳng và quay theo camera
+
+local flyState = nil -- { humanoid, root, attachment, velocity, align }
+
+local function stopFly()
+	if not flyState then
+		return
+	end
+	flyState.velocity:Destroy()
+	flyState.align:Destroy()
+	flyState.attachment:Destroy()
+	if flyState.humanoid.Parent then
+		flyState.humanoid.PlatformStand = false
+		flyState.humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	end
+	flyState = nil
+end
+
+local function startFly(humanoid, root)
+	local attachment = create("Attachment", { Name = "AimLockFly", Parent = root })
+	local velocity = create("LinearVelocity", {
+		Attachment0 = attachment,
+		RelativeTo = Enum.ActuatorRelativeTo.World,
+		VelocityConstraintMode = Enum.VelocityConstraintMode.Vector,
+		MaxForce = math.huge,
+		VectorVelocity = Vector3.zero,
+		Parent = root,
+	})
+	local align = create("AlignOrientation", {
+		Mode = Enum.OrientationAlignmentMode.OneAttachment,
+		Attachment0 = attachment,
+		MaxTorque = math.huge,
+		Responsiveness = 40,
+		CFrame = root.CFrame.Rotation,
+		Parent = root,
+	})
+	-- PlatformStand tắt đi bộ / trọng lực của Humanoid để không giành lực với LinearVelocity
+	humanoid.PlatformStand = true
+	flyState = { humanoid = humanoid, root = root, attachment = attachment, velocity = velocity, align = align }
+end
+
+local function updateFly(camera)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local canFly = settings.Fly and humanoid ~= nil and root ~= nil and humanoid.Health > 0
+	if flyState and (not canFly or flyState.root ~= root) then
+		stopFly()
+	end
+	if not canFly then
+		return
+	end
+	if not flyState then
+		startFly(humanoid, root)
+	end
+
+	local look = camera.CFrame.LookVector
+	local flatLook = Vector3.new(look.X, 0, look.Z)
+	flatLook = if flatLook.Magnitude > 0.01 then flatLook.Unit else Vector3.new(0, 0, -1)
+	local flatRight = Vector3.new(-flatLook.Z, 0, flatLook.X)
+
+	-- Bàn phím: W/S theo hướng nhìn (cả lên xuống), A/D sang ngang, Space lên, Ctrl xuống.
+	-- Không bấm phím nào thì lấy MoveDirection (gamepad / joystick mobile).
+	local forward, right, vertical = 0, 0, 0
+	if not UserInputService:GetFocusedTextBox() then
+		local function down(keyCode)
+			return if UserInputService:IsKeyDown(keyCode) then 1 else 0
+		end
+		forward = down(Enum.KeyCode.W) - down(Enum.KeyCode.S)
+		right = down(Enum.KeyCode.D) - down(Enum.KeyCode.A)
+		vertical = down(Enum.KeyCode.Space) - down(Enum.KeyCode.LeftControl)
+	end
+	if forward == 0 and right == 0 then
+		local moveDirection = humanoid.MoveDirection
+		forward, right = moveDirection:Dot(flatLook), moveDirection:Dot(flatRight)
+	end
+
+	local direction = look * forward + flatRight * right + Vector3.yAxis * vertical
+	if direction.Magnitude > 1 then
+		direction = direction.Unit
+	end
+	flyState.velocity.VectorVelocity = direction * settings.FlySpeed
+	flyState.align.CFrame = CFrame.lookAt(Vector3.zero, flatLook)
 end
 
 --// Main loop: chạy ngay sau camera mặc định để ghi đè hướng nhìn
@@ -1500,22 +2359,51 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 	if mouseFree then
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
+	applyMovement()
+	applyTheme()
 
 	local camera = workspace.CurrentCamera
 	if not camera then
 		return
 	end
+	updateFly(camera)
 	local mousePos = UserInputService:GetMouseLocation()
 	local fovCenter = if settings.FOVOrigin == "Center" then camera.ViewportSize / 2 else mousePos
 	local root = getCharacterRoot()
 	local originPos = if root then root.Position else camera.CFrame.Position
 
 	local aimInput = AIM_KEYS[settings.AimKey]
+	if not settings.Enabled or settings.AimActivation ~= "Toggle" then
+		aimToggled = false
+	end
 	-- Chỉ aim bằng chuột trái mới bị chặn khi đang bấm/kéo menu
 	local uiBusy = aimInput == Enum.UserInputType.MouseButton1
 		and (activeSlider ~= nil or dragStart ~= nil or isPointerOverMenu(mousePos))
 	local holding = settings.Enabled
-		and (aimInput == nil or (not uiBusy and UserInputService:IsMouseButtonPressed(aimInput)))
+		and (
+			aimInput == nil
+			or (
+				if settings.AimActivation == "Toggle"
+					then aimToggled
+					else not uiBusy and UserInputService:IsMouseButtonPressed(aimInput)
+			)
+		)
+
+	-- Switch target: đang khóa thì chuyển sang mục tiêu tốt nhất còn lại (cần bật Sticky lock để giữ)
+	if switchRequested then
+		switchRequested = false
+		if holding and lockedModel then
+			local nextModel = findTarget(camera, fovCenter, originPos, lockedModel)
+			if nextModel then
+				lockedModel = nextModel
+				notify(`Switched to {nextModel.Name}`, COLORS.Accent)
+			else
+				notify("No other target", COLORS.SubText)
+			end
+		else
+			notify("Not locked on a target", COLORS.SubText)
+		end
+	end
 
 	-- Đang aim thì giữ mục tiêu cũ tới khi nó chết / bị che / ra khỏi màn hình, tránh nhảy mục tiêu
 	local targetModel, targetPart = nil, nil
@@ -1536,7 +2424,7 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 	end
 
 	local stateColor = if aiming then COLORS.Locked elseif targetPart then COLORS.Tracking else COLORS.Accent
-	fovCircle.Visible = settings.Enabled and settings.ShowFOV
+	fovCircle.Visible = settings.Enabled and settings.ShowFOV and not settings.IgnoreFOV
 	fovCircle.Position = UDim2.fromOffset(fovCenter.X, fovCenter.Y)
 	cursorDot.Visible = mouseFree
 	cursorDot.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
@@ -1561,7 +2449,10 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 			if team then "  ·  " .. team else ""
 		)
 	else
-		statusLabel.Text = if settings.Enabled then "Target: none" else "Aim lock: OFF"
+		statusLabel.Text = if not settings.Enabled
+			then "Aim lock: OFF"
+			elseif settings.TargetMode == "Pick players" then `Target: none  ·  {pickedCount} picked`
+			else "Target: none"
 	end
 
 	updateEsp(originPos)
@@ -1581,7 +2472,11 @@ unload = function()
 		return
 	end
 	unloaded = true
+	stopSaving = true
+	saveNow()
 	setAutoFire(nil)
+	restoreMovement()
+	stopFly()
 	RunService:UnbindFromRenderStep("AimLock")
 	for _, connection in connections do
 		connection:Disconnect()
