@@ -55,6 +55,7 @@ local AIM_KEYS = {
 
 local settings = {
 	Enabled = true,
+	AlwaysAim = false, -- tự aim + tự bắn mọi mục tiêu vừa lộ ra, kể cả sau lưng (xem ALWAYS_AIM_OVERRIDES)
 	AimKey = "Right mouse", -- "Right mouse" | "Left mouse" | "Always"
 	AimActivation = "Hold", -- "Hold" (giữ phím mới aim) | "Toggle" (bấm 1 lần khóa, bấm lại thả)
 	IgnoreForceField = true, -- bỏ qua ai đang có khiên spawn (ForceField), bắn cũng không mất máu
@@ -97,6 +98,9 @@ local DEFAULT_SETTINGS = table.clone(settings)
 
 -- Mục tiêu được tick ở chế độ "Pick players": ["player:<UserId>" | "npc:<tên model>"] = true
 local selectedTargets = {}
+
+-- Giá trị cài đặt trước khi bật Always aim, để tắt thì trả lại như cũ (nil = đang tắt)
+local alwaysAimSnapshot = nil
 
 local COLORS = {
 	Window = Color3.fromRGB(20, 22, 28),
@@ -277,6 +281,8 @@ local gui = create("ScreenGui", {
 	ResetOnSpawn = false,
 	IgnoreGuiInset = true,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	-- Luôn nằm trên mọi GUI khác của game (DisplayOrder lớn nhất có thể)
+	DisplayOrder = 2147483647,
 	Parent = playerGui,
 })
 
@@ -798,7 +804,8 @@ local function makeSlider(parent, order, text, key, min, max, step, format)
 		local alpha = (settings[key] - min) / (max - min)
 		fill.Size = UDim2.new(alpha, 0, 1, 0)
 		knob.Position = UDim2.new(alpha, 0, 0.5, 0)
-		valueLabel.Text = string.format(format, settings[key])
+		-- format có thể là chuỗi string.format hoặc hàm trả về chữ hiển thị
+		valueLabel.Text = if type(format) == "function" then format(settings[key]) else string.format(format, settings[key])
 	end
 
 	local function setFromX(x)
@@ -943,6 +950,7 @@ local visualsPage = makePage(3, "Visuals")
 local movePage = makePage(4, "Move")
 local miscPage = makePage(5, "Misc")
 
+makeToggle(aimPage, 0, "Always aim (auto)", "AlwaysAim")
 makeToggle(aimPage, 1, "Enabled", "Enabled")
 makeDropdown(aimPage, 2, "Aim key", "AimKey", function()
 	return { "Right mouse", "Left mouse", "Always" }
@@ -953,7 +961,9 @@ end)
 makeDropdown(aimPage, 4, "FOV origin", "FOVOrigin", function()
 	return { "Mouse", "Center" }
 end)
-makeSlider(aimPage, 5, "FOV radius", "FOV", 30, 1000, 5, "%.0f px")
+makeSlider(aimPage, 5, "FOV radius", "FOV", 30, 1000, 5, function(value)
+	return if value >= 1000 then "360°" else string.format("%.0f px", value)
+end)
 makeSlider(aimPage, 6, "Smoothness", "Smoothness", 0, 10, 0.5, "%.1f")
 makeSlider(aimPage, 7, "Prediction", "Prediction", 0, 0.3, 0.01, "%.2f s")
 makeToggle(aimPage, 8, "Sticky lock", "StickyLock")
@@ -1353,6 +1363,8 @@ resetButton.MouseButton1Click:Connect(function()
 	end
 	capturingAction = nil
 	table.clear(selectedTargets)
+	-- Đã về mặc định rồi nên bỏ ảnh chụp Always aim, không trả lại giá trị cũ nữa
+	alwaysAimSnapshot = nil
 	for _, render in controlRenderers do
 		render()
 	end
@@ -1526,8 +1538,14 @@ local function serializeState()
 	end
 	table.sort(picked)
 	local position = window.Position
+	-- Đang bật Always aim thì lưu giá trị gốc (trước khi bị ép), không lưu chính Always aim
+	local savedSettings = table.clone(settings)
+	for key, value in alwaysAimSnapshot or {} do
+		savedSettings[key] = value
+	end
+	savedSettings.AlwaysAim = false
 	return {
-		settings = settings,
+		settings = savedSettings,
 		keybinds = keys,
 		picked = picked,
 		window = { position.X.Scale, position.X.Offset, position.Y.Scale, position.Y.Offset },
@@ -1860,6 +1878,11 @@ local function isValidModel(model, humanoid)
 	return passesTypeFilter(model) and passesTeamFilter(model)
 end
 
+-- 360°: bật toggle "360° (ignore FOV)" hoặc kéo FOV radius lên tối đa (1000)
+local function isFullFov()
+	return settings.IgnoreFOV or settings.FOV >= 1000
+end
+
 -- Trả về part để ngắm + độ lệch so với tâm FOV + khoảng cách thật (studs), nil nếu không ngắm được.
 -- Độ lệch: pixel tới tâm FOV; chế độ 360° thì là góc (độ) giữa hướng camera và part.
 -- "Head > Body": thử Head trước, Head bị che thì thử thân. "Closest": part gần tâm FOV nhất còn thấy được.
@@ -1893,7 +1916,7 @@ local function evaluate(camera, model, humanoid, fovCenter, originPos, maxCursor
 			continue
 		end
 		local offset
-		if settings.IgnoreFOV then
+		if isFullFov() then
 			local direction = (part.Position - cameraCFrame.Position).Unit
 			offset = math.deg(math.acos(math.clamp(cameraCFrame.LookVector:Dot(direction), -1, 1)))
 		else
@@ -2351,6 +2374,41 @@ local function updateFly(camera)
 	flyState.align.CFrame = CFrame.lookAt(Vector3.zero, flatLook)
 end
 
+--// Always aim: bật thì ép các cài đặt dưới đây (không cần giữ chuột, 360°, chỉ ngắm ai đang lộ ra,
+-- khóa xong bắn luôn); tắt thì trả lại đúng giá trị trước khi bật
+
+local ALWAYS_AIM_OVERRIDES = {
+	Enabled = true,
+	AimKey = "Always",
+	IgnoreFOV = true,
+	WallCheck = true,
+	AutoShoot = true,
+	StickyLock = true,
+	Smoothness = 0,
+}
+
+local function updateAlwaysAim()
+	if settings.AlwaysAim and not alwaysAimSnapshot then
+		alwaysAimSnapshot = {}
+		for key, value in ALWAYS_AIM_OVERRIDES do
+			alwaysAimSnapshot[key] = settings[key]
+			settings[key] = value
+		end
+		notify("Always aim: ON · auto lock + shoot", COLORS.Locked)
+	elseif not settings.AlwaysAim and alwaysAimSnapshot then
+		for key, value in alwaysAimSnapshot do
+			settings[key] = value
+		end
+		alwaysAimSnapshot = nil
+		notify("Always aim: OFF", COLORS.SubText)
+	else
+		return
+	end
+	for _, render in controlRenderers do
+		render()
+	end
+end
+
 --// Main loop: chạy ngay sau camera mặc định để ghi đè hướng nhìn
 
 local lockedModel = nil
@@ -2372,6 +2430,7 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 	local root = getCharacterRoot()
 	local originPos = if root then root.Position else camera.CFrame.Position
 
+	updateAlwaysAim()
 	local aimInput = AIM_KEYS[settings.AimKey]
 	if not settings.Enabled or settings.AimActivation ~= "Toggle" then
 		aimToggled = false
@@ -2424,7 +2483,7 @@ RunService:BindToRenderStep("AimLock", Enum.RenderPriority.Camera.Value + 1, fun
 	end
 
 	local stateColor = if aiming then COLORS.Locked elseif targetPart then COLORS.Tracking else COLORS.Accent
-	fovCircle.Visible = settings.Enabled and settings.ShowFOV and not settings.IgnoreFOV
+	fovCircle.Visible = settings.Enabled and settings.ShowFOV and not isFullFov()
 	fovCircle.Position = UDim2.fromOffset(fovCenter.X, fovCenter.Y)
 	cursorDot.Visible = mouseFree
 	cursorDot.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
@@ -2493,4 +2552,3 @@ unload = function()
 end
 
 closeButton.MouseButton1Click:Connect(unload)
- -- done
