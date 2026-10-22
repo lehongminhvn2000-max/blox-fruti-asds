@@ -87,7 +87,7 @@ top.Parent = main
 Instance.new("UICorner", top).CornerRadius = UDim.new(0, 12)
 
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -55, 1, 0)
+title.Size = UDim2.new(1, -98, 1, 0)
 title.Position = UDim2.fromOffset(13, 0)
 title.BackgroundTransparency = 1
 title.Text = "MURDER MYSTERY  •  UTILITY HUB"
@@ -97,6 +97,17 @@ title.Font = Enum.Font.GothamBold
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Active = true
 title.Parent = top
+
+local minimize = Instance.new("TextButton")
+minimize.Size = UDim2.fromOffset(26, 28)
+minimize.Position = UDim2.new(1, -66, 0, 7)
+minimize.BackgroundColor3 = Color3.fromRGB(70, 80, 105)
+minimize.Text = "-"
+minimize.TextColor3 = Color3.new(1, 1, 1)
+minimize.TextSize = 20
+minimize.Font = Enum.Font.GothamBold
+minimize.Parent = top
+Instance.new("UICorner", minimize).CornerRadius = UDim.new(0, 6)
 
 local close = Instance.new("TextButton")
 close.Size = UDim2.fromOffset(30, 28)
@@ -355,11 +366,24 @@ local function scanPlayerWeapons()
             end
         end
 
-        local text = player.Name .. ": " .. (#found > 0 and table.concat(found, ", ") or "no matching tools")
-        addRow(results, text, function()
+        local roleText = "UNKNOWN"
+        local roleColor = Color3.fromRGB(230, 230, 235)
+
+        if table.find(found, "Knife") then
+            roleText = "MURDERER"
+            roleColor = Color3.fromRGB(255, 75, 80)
+        elseif table.find(found, "Gun") or table.find(found, "Revolver") then
+            roleText = "SHERIFF"
+            roleColor = Color3.fromRGB(75, 160, 255)
+        end
+
+        local text = player.Name .. "  |  " .. roleText
+            .. (#found > 0 and ("  [" .. table.concat(found, ", ") .. "]") or "")
+        local row = addRow(results, text, function()
             selectedPlayer = player
             status.Text = "Selected " .. player.Name .. " from scan."
         end)
+        row.TextColor3 = roleColor
     end
     status.Text = "Scan complete. Tool-based role guesses are not guaranteed."
 end
@@ -519,6 +543,21 @@ local function setNoClip(enabled)
     end
 end
 
+local minimized = false
+local savedHeight = main.Size.Y.Offset
+
+local function setMinimized(enabled)
+    minimized = enabled
+    main.Size = UDim2.fromOffset(main.Size.X.Offset, enabled and 42 or savedHeight)
+    minimize.Text = enabled and "+" or "-"
+
+    for _, child in ipairs(main:GetChildren()) do
+        if child ~= top and child ~= outline then
+            child.Visible = not enabled
+        end
+    end
+end
+
 local function shutdown()
     if not running then return end
     running = false
@@ -529,6 +568,10 @@ local function shutdown()
     gui:Destroy()
     script:Destroy()
 end
+
+addConnection(minimize.Activated:Connect(function()
+    setMinimized(not minimized)
+end))
 
 addConnection(refreshPlayersButton.Activated:Connect(refreshPlayers))
 addConnection(teleportPlayerButton.Activated:Connect(function()
