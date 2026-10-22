@@ -544,18 +544,34 @@ local function setNoClip(enabled)
 end
 
 local minimized = false
-local savedHeight = main.Size.Y.Offset
+local expandedSize = UDim2.fromOffset(420, 555)
 
 local function setMinimized(enabled)
     minimized = enabled
-    main.Size = UDim2.fromOffset(main.Size.X.Offset, enabled and 42 or savedHeight)
+
+    -- Set the frame size explicitly so the minus button always collapses it.
+    if enabled then
+        main.Size = UDim2.fromOffset(420, 42)
+    else
+        main.Size = expandedSize
+    end
+
     minimize.Text = enabled and "+" or "-"
 
+    -- Hide every UI object outside the title bar while minimized.
     for _, child in ipairs(main:GetChildren()) do
         if child ~= top and child ~= outline then
-            child.Visible = not enabled
+            if child:IsA("GuiObject") then
+                child.Visible = not enabled
+            end
         end
     end
+
+    -- Keep the title bar and its buttons available while minimized.
+    top.Visible = true
+    title.Visible = true
+    minimize.Visible = true
+    close.Visible = true
 end
 
 local function shutdown()
