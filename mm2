@@ -1,27 +1,20 @@
--- Murder Mystery Utility Hub (Single LocalScript)
+-- Murder Mystery Utility Hub (Enhanced V6 VIP Ultra Edition - Multi-Featured)
 -- Place in StarterPlayer > StarterPlayerScripts in YOUR Roblox Studio game.
--- H = toggle menu; X = close permanently.
---
--- Includes:
--- * Player list + teleport to selected player
--- * Player ESP outlines + names + tool-based hints
--- * Scan player tools (Knife / Gun / Revolver)
--- * Find dropped weapon Tools/Models and teleport to them
--- * Adjustable WalkSpeed
--- * No-clip toggle with collision restoration
---
--- Note: A LocalScript cannot securely remove a weapon from another player's
--- server-controlled inventory. A real transfer needs your game's server logic.
+-- H = Toggle Menu; X = Close/Destruct Permanently.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
-local GUI_NAME = "MMUtilityHubSingleScript"
+local GUI_NAME = "MMUtilityHubEnhanced"
 
+-- Destroy previous instances cleanly
 local previous = playerGui:FindFirstChild(GUI_NAME)
 if previous then previous:Destroy() end
 
@@ -30,16 +23,62 @@ local connections = {}
 local espObjects = {}
 local playerRowButtons = {}
 local weaponRowButtons = {}
+
+-- Forward State Declarations
 local selectedPlayer = nil
 local selectedWeapon = nil
 local espEnabled = false
 local espNamesEnabled = true
+local espChamsEnabled = true
 local speedEnabled = false
 local speedValue = 32
 local noClipEnabled = false
 local originalCollision = {}
 local noClipConnection = nil
+local airJumpEnabled = false
+local flyEnabled = false
+local flySpeed = 60
+local flyConnection = nil
+local flyVelocity = nil
+local spinEnabled = false
+local spinRPS = 5
+local spinConnection = nil
+local orbitEnabled = false
+local orbitConnection = nil
+local orbitAngle = 0
+local orbitDistance = 6
+local fullBrightEnabled = false
+local savedLighting = nil
+local currentFOV = 70
+local spectateEnabled = false
+local aimbotEnabled = false
+local aimbotConnection = nil
+local aimbotBone = "Head" -- "Head" or "HumanoidRootPart"
 
+-- Pro Expansion State Pack
+local hitboxEnabled = false
+local hitboxSize = 10
+local hitboxTransparency = 0.5
+local killauraEnabled = false
+local killauraConnection = nil
+local coinFarmEnabled = false
+local coinFarmConnection = nil
+local autoWeaponEnabled = false
+local autoWeaponConnection = nil
+local infiniteOxygenEnabled = false
+local oxygenConnection = nil
+local autoShieldEnabled = false
+local shieldConnection = nil
+local trapDisablerEnabled = false
+local trapConnection = nil
+
+-- Explicit Safe Zone Configuration
+local SAFE_ZONE_CFRAME = CFrame.new(542.44, 469.44, 37.61)
+
+-- UI Reference Pointers
+local gui, main, outline, content, status
+
+-- Utility Event Handlers
 local function addConnection(connection)
     table.insert(connections, connection)
     return connection
@@ -52,175 +91,18 @@ local function disconnectAll()
         end
     end
     table.clear(connections)
-    if noClipConnection then
-        noClipConnection:Disconnect()
-        noClipConnection = nil
-    end
+    if noClipConnection then noClipConnection:Disconnect(); noClipConnection = nil end
+    if flyConnection then flyConnection:Disconnect(); flyConnection = nil end
+    if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
+    if orbitConnection then orbitConnection:Disconnect(); orbitConnection = nil end
+    if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection = nil end
+    if killauraConnection then killauraConnection:Disconnect(); killauraConnection = nil end
+    if coinFarmConnection then coinFarmConnection:Disconnect(); coinFarmConnection = nil end
+    if autoWeaponConnection then autoWeaponConnection:Disconnect(); autoWeaponConnection = nil end
+    if oxygenConnection then oxygenConnection:Disconnect(); oxygenConnection = nil end
+    if shieldConnection then shieldConnection:Disconnect(); shieldConnection = nil end
+    if trapConnection then trapConnection:Disconnect(); trapConnection = nil end
 end
-
-local gui = Instance.new("ScreenGui")
-gui.Name = GUI_NAME
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 100
-gui.Parent = playerGui
-
-local main = Instance.new("Frame")
-main.Name = "Main"
-main.Size = UDim2.fromOffset(420, 555)
-main.Position = UDim2.new(0, 22, 0.12, 0)
-main.BackgroundColor3 = Color3.fromRGB(22, 24, 32)
-main.BorderSizePixel = 0
-main.Active = true
-main.Parent = gui
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
-
-local outline = Instance.new("UIStroke")
-outline.Color = Color3.fromRGB(75, 135, 255)
-outline.Thickness = 1.5
-outline.Parent = main
-
-local top = Instance.new("Frame")
-top.Size = UDim2.new(1, 0, 0, 42)
-top.BackgroundColor3 = Color3.fromRGB(31, 35, 47)
-top.BorderSizePixel = 0
-top.Parent = main
-Instance.new("UICorner", top).CornerRadius = UDim.new(0, 12)
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -98, 1, 0)
-title.Position = UDim2.fromOffset(13, 0)
-title.BackgroundTransparency = 1
-title.Text = "MURDER MYSTERY  •  UTILITY HUB"
-title.TextColor3 = Color3.fromRGB(245, 247, 255)
-title.TextSize = 14
-title.Font = Enum.Font.GothamBold
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Active = true
-title.Parent = top
-
-local minimize = Instance.new("TextButton")
-minimize.Size = UDim2.fromOffset(26, 28)
-minimize.Position = UDim2.new(1, -66, 0, 7)
-minimize.BackgroundColor3 = Color3.fromRGB(70, 80, 105)
-minimize.Text = "-"
-minimize.TextColor3 = Color3.new(1, 1, 1)
-minimize.TextSize = 20
-minimize.Font = Enum.Font.GothamBold
-minimize.Parent = top
-Instance.new("UICorner", minimize).CornerRadius = UDim.new(0, 6)
-
-local close = Instance.new("TextButton")
-close.Size = UDim2.fromOffset(30, 28)
-close.Position = UDim2.new(1, -36, 0, 7)
-close.BackgroundColor3 = Color3.fromRGB(190, 55, 65)
-close.Text = "X"
-close.TextColor3 = Color3.new(1, 1, 1)
-close.TextSize = 14
-close.Font = Enum.Font.GothamBold
-close.Parent = top
-Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
-
-local status = Instance.new("TextLabel")
-status.Size = UDim2.new(1, -24, 0, 24)
-status.Position = UDim2.fromOffset(12, 46)
-status.BackgroundTransparency = 1
-status.Text = "H: hide/show  •  X: exit"
-status.TextColor3 = Color3.fromRGB(165, 174, 195)
-status.TextSize = 11
-status.Font = Enum.Font.Gotham
-status.TextXAlignment = Enum.TextXAlignment.Left
-status.Parent = main
-
-local function makeLabel(text, y)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -24, 0, 20)
-    label.Position = UDim2.fromOffset(12, y)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(220, 225, 240)
-    label.TextSize = 12
-    label.Font = Enum.Font.GothamBold
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = main
-    return label
-end
-
-local function makeButton(text, x, y, w, h, color)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.fromOffset(w, h)
-    button.Position = UDim2.fromOffset(x, y)
-    button.BackgroundColor3 = color or Color3.fromRGB(49, 78, 130)
-    button.Text = text
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.TextSize = 11
-    button.Font = Enum.Font.GothamMedium
-    button.TextWrapped = true
-    button.Parent = main
-    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
-    return button
-end
-
-local function makeList(name, x, y, w, h)
-    local list = Instance.new("ScrollingFrame")
-    list.Name = name
-    list.Size = UDim2.fromOffset(w, h)
-    list.Position = UDim2.fromOffset(x, y)
-    list.BackgroundColor3 = Color3.fromRGB(15, 17, 23)
-    list.BorderSizePixel = 0
-    list.ScrollBarThickness = 4
-    list.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    list.CanvasSize = UDim2.new()
-    list.Parent = main
-    Instance.new("UICorner", list).CornerRadius = UDim.new(0, 7)
-
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 4)
-    padding.PaddingLeft = UDim.new(0, 4)
-    padding.PaddingRight = UDim.new(0, 4)
-    padding.Parent = list
-
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 3)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = list
-    return list
-end
-
-makeLabel("PLAYERS", 72)
-local playerList = makeList("Players", 12, 94, 194, 105)
-local refreshPlayersButton = makeButton("Refresh", 216, 94, 192, 28)
-local teleportPlayerButton = makeButton("Teleport to selected", 216, 128, 192, 28, Color3.fromRGB(35, 125, 83))
-local scanToolsButton = makeButton("Scan player weapons", 216, 162, 192, 28)
-
-makeLabel("DROPPED WEAPONS", 207)
-local weaponList = makeList("Weapons", 12, 229, 194, 92)
-local refreshWeaponsButton = makeButton("Find dropped weapons", 216, 229, 192, 28)
-local teleportWeaponButton = makeButton("Teleport to selected weapon", 216, 263, 192, 28, Color3.fromRGB(35, 125, 83))
-local scanHintButton = makeButton("Weapon transfer info", 216, 297, 192, 28)
-
-makeLabel("MOVEMENT", 330)
-local speedInput = Instance.new("TextBox")
-speedInput.Size = UDim2.fromOffset(74, 28)
-speedInput.Position = UDim2.fromOffset(12, 352)
-speedInput.BackgroundColor3 = Color3.fromRGB(39, 42, 53)
-speedInput.Text = "32"
-speedInput.PlaceholderText = "16-100"
-speedInput.TextColor3 = Color3.new(1, 1, 1)
-speedInput.TextSize = 12
-speedInput.Font = Enum.Font.Gotham
-speedInput.ClearTextOnFocus = false
-speedInput.Parent = main
-Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 6)
-
-local applySpeedButton = makeButton("Apply", 92, 352, 66, 28)
-local speedButton = makeButton("Speed: OFF", 164, 352, 116, 28)
-local noClipButton = makeButton("No-clip: OFF", 286, 352, 122, 28)
-
-local espButton = makeButton("Player ESP: OFF", 12, 386, 194, 28)
-local namesButton = makeButton("ESP Names: ON", 216, 386, 192, 28)
-
-makeLabel("SCAN RESULTS", 420)
-local results = makeList("Results", 12, 442, 396, 98)
 
 local function getParts(player)
     local character = player and player.Character
@@ -229,13 +111,13 @@ local function getParts(player)
 end
 
 local function teleportTo(cframe)
-    local character, humanoid, root = getParts(localPlayer)
+    local character, _, root = getParts(localPlayer)
     if not character or not root then
-        status.Text = "Your character isn't ready."
+        if status then status.Text = "Character system not ready." end
         return
     end
-    character:PivotTo(cframe + Vector3.new(0, 3, 0))
-    status.Text = "Teleport attempted; server may correct movement."
+    character:PivotTo(cframe)
+    if status then status.Text = "Teleported successfully." end
 end
 
 local function clearList(list)
@@ -249,9 +131,9 @@ end
 local function addRow(list, text, onClick)
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(1, -4, 0, 25)
-    button.BackgroundColor3 = Color3.fromRGB(36, 40, 52)
+    button.BackgroundColor3 = Color3.fromRGB(30, 34, 46)
     button.Text = text
-    button.TextColor3 = Color3.fromRGB(235, 238, 247)
+    button.TextColor3 = Color3.fromRGB(230, 235, 245)
     button.TextSize = 10
     button.Font = Enum.Font.Gotham
     button.TextTruncate = Enum.TextTruncate.AtEnd
@@ -261,147 +143,52 @@ local function addRow(list, text, onClick)
     return button
 end
 
-local function refreshPlayers()
-    clearList(playerList)
-    table.clear(playerRowButtons)
-    selectedPlayer = nil
-
-    local list = Players:GetPlayers()
-    table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
-
-    for _, player in ipairs(list) do
-        if player ~= localPlayer then
-            local button = addRow(playerList, player.DisplayName .. " (@" .. player.Name .. ")", function()
-                selectedPlayer = player
-                for p, row in pairs(playerRowButtons) do
-                    row.BackgroundColor3 = (p == player) and Color3.fromRGB(48, 100, 170) or Color3.fromRGB(36, 40, 52)
-                end
-                status.Text = "Selected player: " .. player.Name
-            end)
-            playerRowButtons[player] = button
+-- Lighting Control Module
+local function setFullBright(enabled)
+    fullBrightEnabled = enabled
+    local fullBrightButton = content:FindFirstChild("FullbrightButton")
+    if fullBrightButton then
+        fullBrightButton.Text = enabled and "Fullbright: ON" or "Fullbright System: OFF"
+        fullBrightButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    end
+    if enabled then
+        if not savedLighting then
+            savedLighting = { Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, FogEnd = Lighting.FogEnd, GlobalShadows = Lighting.GlobalShadows }
+        end
+        Lighting.Brightness = 3
+        Lighting.ClockTime = 12
+        Lighting.FogEnd = 999999
+        Lighting.GlobalShadows = false
+    else
+        if savedLighting then
+            Lighting.Brightness = savedLighting.Brightness
+            Lighting.ClockTime = savedLighting.ClockTime
+            Lighting.FogEnd = savedLighting.FogEnd
+            Lighting.GlobalShadows = savedLighting.GlobalShadows
+            savedLighting = nil
         end
     end
-    status.Text = "Player list refreshed."
 end
 
-local function isPlayerInventoryItem(obj)
-    for _, player in ipairs(Players:GetPlayers()) do
-        local backpack = player:FindFirstChildOfClass("Backpack")
-        if player.Character and obj:IsDescendantOf(player.Character) then
-            return true
-        end
-        if backpack and obj:IsDescendantOf(backpack) then
-            return true
-        end
+-- Collision Management
+local function restoreCollision()
+    for part, original in pairs(originalCollision) do
+        if part and part.Parent then part.CanCollide = original end
     end
-    return false
+    table.clear(originalCollision)
 end
 
-local function getWorldPosition(obj)
-    if obj:IsA("BasePart") then
-        return obj.CFrame
-    elseif obj:IsA("Model") then
-        return obj:GetPivot()
-    elseif obj:IsA("Tool") then
-        local handle = obj:FindFirstChild("Handle")
-        if handle and handle:IsA("BasePart") then return handle.CFrame end
-        local part = obj:FindFirstChildWhichIsA("BasePart", true)
-        if part then return part.CFrame end
-    end
-    return nil
-end
-
-local function refreshWeapons()
-    clearList(weaponList)
-    table.clear(weaponRowButtons)
-    selectedWeapon = nil
-    local found = {}
-
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        local name = obj.Name:lower()
-        local matches = name:find("gun") or name:find("revolver")
-            or name:find("knife") or name:find("sheriff")
-        if matches and (obj:IsA("Tool") or obj:IsA("Model")) and not isPlayerInventoryItem(obj) then
-            if getWorldPosition(obj) then
-                table.insert(found, obj)
-            end
-        end
-    end
-
-    for i, obj in ipairs(found) do
-        local button = addRow(weaponList, obj.Name .. " #" .. i, function()
-            selectedWeapon = obj
-            for item, row in pairs(weaponRowButtons) do
-                row.BackgroundColor3 = (item == obj) and Color3.fromRGB(48, 100, 170) or Color3.fromRGB(36, 40, 52)
-            end
-            status.Text = "Selected weapon: " .. obj.Name
-        end)
-        weaponRowButtons[obj] = button
-    end
-    status.Text = "Found " .. #found .. " possible dropped weapon(s)."
-end
-
-local function clearResults()
-    clearList(results)
-end
-
-local function scanPlayerWeapons()
-    clearResults()
-    local list = Players:GetPlayers()
-    table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
-
-    for _, player in ipairs(list) do
-        local character = player.Character
-        local backpack = player:FindFirstChildOfClass("Backpack")
-        local found = {}
-
-        for _, container in ipairs({backpack, character}) do
-            if container then
-                for _, name in ipairs({"Knife", "Gun", "Revolver"}) do
-                    local tool = container:FindFirstChild(name)
-                    if tool and tool:IsA("Tool") and not table.find(found, name) then
-                        table.insert(found, name)
-                    end
-                end
-            end
-        end
-
-        local roleText = "UNKNOWN"
-        local roleColor = Color3.fromRGB(230, 230, 235)
-
-        if table.find(found, "Knife") then
-            roleText = "MURDERER"
-            roleColor = Color3.fromRGB(255, 75, 80)
-        elseif table.find(found, "Gun") or table.find(found, "Revolver") then
-            roleText = "SHERIFF"
-            roleColor = Color3.fromRGB(75, 160, 255)
-        end
-
-        local text = player.Name .. "  |  " .. roleText
-            .. (#found > 0 and ("  [" .. table.concat(found, ", ") .. "]") or "")
-        local row = addRow(results, text, function()
-            selectedPlayer = player
-            status.Text = "Selected " .. player.Name .. " from scan."
-        end)
-        row.TextColor3 = roleColor
-    end
-    status.Text = "Scan complete. Tool-based role guesses are not guaranteed."
-end
-
+-- Telemetry Sweeper Core Logic
 local function getToolHint(player)
     local character = player.Character
     local backpack = player:FindFirstChildOfClass("Backpack")
     for _, container in ipairs({backpack, character}) do
         if container then
-            if container:FindFirstChild("Knife") then
-                return Color3.fromRGB(255, 80, 85), "Possible Murderer"
-            end
-            if container:FindFirstChild("Gun") or container:FindFirstChild("Revolver") then
-                return Color3.fromRGB(75, 160, 255), "Possible Sheriff"
-            end
+            if container:FindFirstChild("Knife") then return Color3.fromRGB(255, 65, 70), "🚨 MURDERER" end
+            if container:FindFirstChild("Gun") or container:FindFirstChild("Revolver") then return Color3.fromRGB(65, 145, 255), "⭐ SHERIFF" end
         end
     end
-    return Color3.fromRGB(255, 220, 80), "No matching tool"
+    return Color3.fromRGB(240, 240, 240), "Innocent"
 end
 
 local function clearESP(player)
@@ -417,7 +204,6 @@ local function updateESP(player)
         clearESP(player)
         return
     end
-
     local character, humanoid, root = getParts(player)
     if not character or not humanoid or humanoid.Health <= 0 or not root then
         clearESP(player)
@@ -437,7 +223,7 @@ local function updateESP(player)
         local billboard = Instance.new("BillboardGui")
         billboard.Name = "MMHubESPLabel"
         billboard.Size = UDim2.fromOffset(220, 42)
-        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.StudsOffset = Vector3.new(0, 3.5, 0)
         billboard.AlwaysOnTop = true
         billboard.Adornee = root
         billboard.Parent = gui
@@ -445,8 +231,8 @@ local function updateESP(player)
         local label = Instance.new("TextLabel")
         label.Size = UDim2.fromScale(1, 1)
         label.BackgroundTransparency = 1
-        label.TextStrokeTransparency = 0.2
-        label.TextSize = 12
+        label.TextStrokeTransparency = 0.1
+        label.TextSize = 11
         label.Font = Enum.Font.GothamBold
         label.TextWrapped = true
         label.Parent = billboard
@@ -466,10 +252,674 @@ local function updateESP(player)
     entry.label.Text = player.DisplayName .. " (@" .. player.Name .. ")\n" .. hint
 end
 
+-- Shutdown Sequence Block
+local function shutdown()
+    if not running then return end
+    running = false
+    
+    if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection = nil end
+    if noClipEnabled then restoreCollision() end
+    if speedEnabled then speedEnabled = false end
+    if flyEnabled then flyEnabled = false end
+    if spinEnabled then spinEnabled = false end
+    if orbitEnabled then orbitEnabled = false end
+    if fullBrightEnabled then setFullBright(false) end
+    
+    for player in pairs(espObjects) do clearESP(player) end
+    disconnectAll()
+    
+    if gui then gui:Destroy() end
+    script:Destroy()
+end
+
+-- Global Stream Refresh Configurations
+local function refreshPlayers()
+    local playerList = content:FindFirstChild("PlayersList")
+    if not playerList then return end
+    clearList(playerList)
+    table.clear(playerRowButtons)
+    selectedPlayer = nil
+    if spectateEnabled then
+        spectateEnabled = false
+        local spectateButton = content:FindFirstChild("SpectateButton")
+        if spectateButton then spectateButton.Text = "Spectate Target: OFF" end
+        local _, ownHum = getParts(localPlayer)
+        if ownHum then Workspace.CurrentCamera.CameraSubject = ownHum end
+    end
+    local list = Players:GetPlayers()
+    table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
+    for _, player in ipairs(list) do
+        if player ~= localPlayer then
+            local button = addRow(playerList, player.DisplayName .. " (@" .. player.Name .. ")", function()
+                selectedPlayer = player
+                for p, row in pairs(playerRowButtons) do
+                    row.BackgroundColor3 = (p == player) and Color3.fromRGB(75, 135, 255) or Color3.fromRGB(30, 34, 46)
+                end
+                status.Text = "Locked target on: " .. player.Name
+                if spectateEnabled then
+                    local _, targetHum = getParts(selectedPlayer)
+                    if targetHum then Workspace.CurrentCamera.CameraSubject = targetHum end
+                end
+            end)
+            playerRowButtons[player] = button
+        end
+    end
+    status.Text = "Player list refreshed successfully."
+end
+
+-- Advanced Pro Modules Setup
+local function updateHitboxes()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local root = player.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                if hitboxEnabled then
+                    root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                    root.Transparency = hitboxTransparency
+                    root.Color = Color3.fromRGB(255, 65, 70)
+                    root.Material = Enum.Material.Neon
+                    root.CanCollide = false
+                else
+                    root.Size = Vector3.new(2, 2, 1)
+                    root.Transparency = 1
+                    root.CanCollide = true
+                end
+            end
+        end
+    end
+end
+
+local function setHitbox(enabled)
+    hitboxEnabled = enabled
+    local hitboxButton = content:FindFirstChild("HitboxButton")
+    if hitboxButton then
+        hitboxButton.Text = enabled and "Hitbox Master: ON" or "Hitbox Multiplier: OFF"
+        hitboxButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    end
+    updateHitboxes()
+end
+
+local function setKillaura(enabled)
+    killauraEnabled = enabled
+    local killauraButton = content:FindFirstChild("KillauraButton")
+    if killauraButton then
+        killauraButton.Text = enabled and "Kill Aura Active: ON" or "Kill Aura (Knife): OFF"
+        killauraButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    end
+    if killauraConnection then killauraConnection:Disconnect(); killauraConnection = nil end
+    if enabled then
+        killauraConnection = RunService.Heartbeat:Connect(function()
+            local ownChar, ownHum, ownRoot = getParts(localPlayer)
+            if not ownChar or not ownRoot then return end
+            local knife = ownChar:FindFirstChild("Knife") or (localPlayer:FindFirstChild("Backpack") and localPlayer.Backpack:FindFirstChild("Knife"))
+            if not knife then return end
+            if knife.Parent ~= ownChar then knife.Parent = ownChar end
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= localPlayer then
+                    local _, targetHum, targetRoot = getParts(player)
+                    if targetHum and targetRoot and targetHum.Health > 0 then
+                        local distance = (ownRoot.Position - targetRoot.Position).Magnitude
+                        if distance <= 18 then
+                            knife:Activate()
+                            if firetouchinterest then
+                                firetouchinterest(targetRoot, knife.Handle, 0)
+                                firetouchinterest(targetRoot, knife.Handle, 1)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- ULTRA FAST COIN & CANDY FARM
+local function setCoinFarm(enabled)
+    coinFarmEnabled = enabled
+    local farmButton = content:FindFirstChild("CoinFarmButton")
+    if farmButton then
+        farmButton.Text = enabled and "Auto Candy/Coin Farm: ON" or "Candy/Coin Auto-Farm: OFF"
+        farmButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    end
+    if coinFarmConnection then coinFarmConnection:Disconnect(); coinFarmConnection = nil end
+    if enabled then
+        -- Chuyển sang quét đa mục tiêu đồng thời trong mỗi khung hình RenderStepped để đạt tốc độ tối đa
+        coinFarmConnection = RunService.RenderStepped:Connect(function()
+            local ownChar, _, ownRoot = getParts(localPlayer)
+            if not ownRoot then return end
+            
+            -- Chống chết: Tự động vô hiệu hóa va chạm tạm thời khi farm để không dính bẫy hoặc địa hình
+            for _, part in ipairs(ownChar:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+
+            local itemsToCollect = {}
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    local name = obj.Name:lower()
+                    if name == "coincontainer" or name == "goldcoin" or name == "candycane" or name == "coin" or name:find("candy") or name:find("token") or obj:FindFirstChild("CoinVisual") then
+                        table.insert(itemsToCollect, obj)
+                    end
+                end
+            end
+
+            -- Thu thập hàng loạt vật phẩm gần nhất siêu tốc không có độ trễ delay
+            if #itemsToCollect > 0 then
+                table.sort(itemsToCollect, function(a, b)
+                    return (ownRoot.Position - a.Position).Magnitude < (ownRoot.Position - b.Position).Magnitude
+                end)
+                
+                -- Teleport tức thì đến mục tiêu đầu tiên tối ưu nhất
+                ownRoot.CFrame = itemsToCollect[1].CFrame
+                if firetouchinterest and itemsToCollect[1]:FindFirstChildOfClass("TouchInterest") then
+                    firetouchinterest(ownRoot, itemsToCollect[1], 0)
+                    firetouchinterest(ownRoot, itemsToCollect[1], 1)
+                end
+            end
+        end)
+    end
+end
+
+local function isPlayerInventoryItem(obj)
+    for _, player in ipairs(Players:GetPlayers()) do
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        if player.Character and obj:IsDescendantOf(player.Character) then return true end
+        if backpack and obj:IsDescendantOf(backpack) then return true end
+    end
+    return false
+end
+
+local function getWorldPosition(obj)
+    if obj:IsA("BasePart") then return obj.CFrame
+    elseif obj:IsA("Model") then return obj:GetPivot()
+    elseif obj:IsA("Tool") then
+        local handle = obj:FindFirstChild("Handle")
+        if handle and handle:IsA("BasePart") then return handle.CFrame end
+        local part = obj:FindFirstChildWhichIsA("BasePart", true)
+        if part then return part.CFrame end
+    end
+    return nil
+end
+
+local function setAutoWeapon(enabled)
+    autoWeaponEnabled = enabled
+    local autoWeaponButton = content:FindFirstChild("AutoWeaponButton")
+    if autoWeaponButton then
+        autoWeaponButton.Text = enabled and "Auto Collect Gun: ON" or "Auto Fetch Dropped Gun: OFF"
+        autoWeaponButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    end
+    if autoWeaponConnection then autoWeaponConnection:Disconnect(); autoWeaponConnection = nil end
+    if enabled then
+        autoWeaponConnection = RunService.Heartbeat:Connect(function()
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                local name = obj.Name:lower()
+                if (name:find("gun") or name:find("revolver")) and (obj:IsA("Tool") or obj:IsA("Model")) and not isPlayerInventoryItem(obj) then
+                    local pos = getWorldPosition(obj)
+                    if pos then
+                        teleportTo(pos)
+                        break
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- New Advanced V6 Utility Core Expansions
+local function setInfiniteOxygen(enabled)
+    infiniteOxygenEnabled = enabled
+    local oxyButton = content:FindFirstChild("OxygenButton")
+    if oxyButton then
+        oxyButton.Text = enabled and "Infinite Oxygen: ON" or "Infinite Oxygen: OFF"
+        oxyButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    end
+    if oxygenConnection then oxygenConnection:Disconnect(); oxygenConnection = nil end
+    if enabled then
+        oxygenConnection = RunService.Heartbeat:Connect(function()
+            local char = localPlayer.Character
+            if char and char:FindFirstChild("Oxygen") and char.Oxygen:IsA("NumberValue") then
+                char.Oxygen.Value = 100
+            end
+        end)
+    end
+end
+
+local function setAutoShield(enabled)
+    autoShieldEnabled = enabled
+    local shieldButton = content:FindFirstChild("ShieldButton")
+    if shieldButton then
+        shieldButton.Text = enabled and "Anti-Murd Shield: ON" or "Auto Anti-Knife Shield: OFF"
+        shieldButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    end
+    if shieldConnection then shieldConnection:Disconnect(); shieldConnection = nil end
+    if enabled then
+        shieldConnection = RunService.Heartbeat:Connect(function()
+            local ownChar, _, ownRoot = getParts(localPlayer)
+            if not ownChar or not ownRoot then return end
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= localPlayer then
+                    local _, _, enemyRoot = getParts(player)
+                    if enemyRoot and player.Character:FindFirstChild("Knife") then
+                        local distance = (ownRoot.Position - enemyRoot.Position).Magnitude
+                        if distance < 22 then
+                            ownRoot.AssemblyLinearVelocity = (ownRoot.Position - enemyRoot.Position).Unit * 45
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+local function setTrapDisabler(enabled)
+    trapDisablerEnabled = enabled
+    local trapButton = content:FindFirstChild("TrapButton")
+    if trapButton then
+        trapButton.Text = enabled and "Trap Neutralizer: ON" or "Auto Destroy Traps: OFF"
+        trapButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    end
+    if trapConnection then trapConnection:Disconnect(); trapConnection = nil end
+    if enabled then
+        trapConnection = RunService.Heartbeat:Connect(function()
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if obj:IsA("BasePart") and (obj.Name:lower():find("trap") or obj.Name:lower():find("bear_trap")) then
+                    if obj.CanCollide then obj.CanCollide = false end
+                    if obj:FindFirstChild("TouchInterest") then obj.TouchInterest:Destroy() end
+                end
+            end
+        end)
+    end
+end
+
+local function teleportToRole(roleName)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            local _, hint = getToolHint(player)
+            if hint:find(roleName) then
+                local _, _, root = getParts(player)
+                if root then
+                    teleportTo(root.CFrame + Vector3.new(0, 3, 0))
+                    status.Text = "Teleported to " .. roleName .. " (" .. player.Name .. ")"
+                    return
+                end
+            end
+        end
+    end
+    status.Text = "Target " .. roleName .. " not found or active."
+end
+
+local function serverHop()
+    status.Text = "Finding clean public server server queue..."
+    local x = game:GetService("HttpService"):JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+    for _, server in ipairs(x.data) do
+        if server.playing < server.maxPlayers and server.id ~= game.JobId then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, localPlayer)
+            break
+        end
+    end
+end
+
+local function rejoinServer()
+    status.Text = "Rejoining active instance..."
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, localPlayer)
+end
+
+-- Core Structural Assembly Framework
+gui = Instance.new("ScreenGui")
+gui.Name = GUI_NAME
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 100
+gui.Parent = playerGui
+
+main = Instance.new("Frame")
+main.Name = "Main"
+main.Size = UDim2.fromOffset(430, 580)
+main.Position = UDim2.new(0, 22, 0.1, 0)
+main.BackgroundColor3 = Color3.fromRGB(20, 22, 30)
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+outline = Instance.new("UIStroke")
+outline.Color = Color3.fromRGB(75, 135, 255)
+outline.Thickness = 1.5
+outline.Parent = main
+
+local top = Instance.new("Frame")
+top.Size = UDim2.new(1, 0, 0, 42)
+top.BackgroundColor3 = Color3.fromRGB(28, 31, 43)
+top.BorderSizePixel = 0
+top.Parent = main
+Instance.new("UICorner", top).CornerRadius = UDim.new(0, 12)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -98, 1, 0)
+title.Position = UDim2.fromOffset(13, 0)
+title.BackgroundTransparency = 1
+title.Text = "MURDER MYSTERY  •  VIP UTILITY HUB V6 ULTRA"
+title.TextColor3 = Color3.fromRGB(245, 247, 255)
+title.TextSize = 13
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Active = true
+title.Parent = top
+
+local minimize = Instance.new("TextButton")
+minimize.Size = UDim2.fromOffset(26, 28)
+minimize.Position = UDim2.new(1, -66, 0, 7)
+minimize.BackgroundColor3 = Color3.fromRGB(65, 75, 100)
+minimize.Text = "-"
+minimize.TextColor3 = Color3.new(1, 1, 1)
+minimize.TextSize = 20
+minimize.Font = Enum.Font.GothamBold
+minimize.Parent = top
+Instance.new("UICorner", minimize).CornerRadius = UDim.new(0, 6)
+
+local close = Instance.new("TextButton")
+close.Size = UDim2.fromOffset(30, 28)
+close.Position = UDim2.new(1, -36, 0, 7)
+close.BackgroundColor3 = Color3.fromRGB(185, 50, 60)
+close.Text = "X"
+close.TextColor3 = Color3.new(1, 1, 1)
+close.TextSize = 13
+close.Font = Enum.Font.GothamBold
+close.Parent = top
+Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
+
+content = Instance.new("ScrollingFrame")
+content.Name = "ScrollableContent"
+content.Position = UDim2.fromOffset(0, 42)
+content.Size = UDim2.new(1, 0, 1, -42)
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.ScrollBarThickness = 5
+content.ScrollBarImageColor3 = Color3.fromRGB(75, 135, 255)
+content.CanvasSize = UDim2.fromOffset(0, 1520)
+content.Parent = main
+
+status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -24, 0, 24)
+status.Position = UDim2.fromOffset(12, 5)
+status.BackgroundTransparency = 1
+status.Text = "Key H: Toggle Menu  •  Key X: Self Destruct Framework"
+status.TextColor3 = Color3.fromRGB(160, 170, 190)
+status.TextSize = 11
+status.Font = Enum.Font.Gotham
+status.Parent = content
+
+local function makeLabel(text, y)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -24, 0, 20)
+    label.Position = UDim2.fromOffset(12, y)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(120, 180, 255)
+    label.TextSize = 11
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = content
+    return label
+end
+
+local function makeButton(name, text, x, y, w, h, color)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Size = UDim2.fromOffset(w, h)
+    button.Position = UDim2.fromOffset(x, y)
+    button.BackgroundColor3 = color or Color3.fromRGB(45, 70, 120)
+    button.Text = text
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.TextSize = 11
+    button.Font = Enum.Font.GothamMedium
+    button.TextWrapped = true
+    button.Parent = content
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+    return button
+end
+
+local function makeList(name, x, y, w, h)
+    local list = Instance.new("ScrollingFrame")
+    list.Name = name
+    list.Size = UDim2.fromOffset(w, h)
+    list.Position = UDim2.fromOffset(x, y)
+    list.BackgroundColor3 = Color3.fromRGB(12, 14, 20)
+    list.BorderSizePixel = 0
+    list.ScrollBarThickness = 4
+    list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    list.CanvasSize = UDim2.new()
+    list.Parent = content
+    Instance.new("UICorner", list).CornerRadius = UDim.new(0, 7)
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 4)
+    padding.PaddingLeft = UDim.new(0, 4)
+    padding.PaddingRight = UDim.new(0, 4)
+    padding.Parent = list
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 3)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = list
+    return list
+end
+
+-- Component Sub-Modules Rendering
+makeLabel("TARGET LOCK & TELEPORT CONTROL ENGINE", 35)
+local pList = makeList("PlayersList", 12, 55, 194, 110)
+local refreshPlayersButton = makeButton("RefreshPlayers", "Refresh Active Stream", 216, 55, 192, 25)
+local teleportPlayerButton = makeButton("TeleportPlayer", "Teleport to Selected Player", 216, 83, 192, 25, Color3.fromRGB(35, 125, 83))
+local spectateButton = makeButton("SpectateButton", "Spectate Target: OFF", 216, 111, 192, 25)
+local scanToolsButton = makeButton("ScanTools", "Perform Role Assessment Scan", 216, 139, 192, 25)
+
+makeLabel("AUTOMATION SYSTEMS & AIMBOT SUPER MATRIX", 175)
+local aimbotButton = makeButton("AimbotButton", "Lock Camera View (Aim Lock): OFF", 12, 195, 250, 28, Color3.fromRGB(150, 45, 45))
+local aimbotBoneButton = makeButton("AimbotBoneButton", "Target Bone: Head", 268, 195, 140, 28, Color3.fromRGB(70, 80, 110))
+local hitboxButton = makeButton("HitboxButton", "Hitbox Multiplier Master: OFF", 12, 226, 194, 26)
+local killauraButton = makeButton("KillauraButton", "Kill Aura (Knife Attack): OFF", 216, 226, 192, 26)
+
+makeLabel("SERVER NAVIGATION & MAP TELEPORTS", 260)
+local tpMurdererBtn = makeButton("TpMurderer", "Teleport to Murderer", 12, 280, 194, 26, Color3.fromRGB(130, 35, 35))
+local tpSheriffBtn = makeButton("TpSheriff", "Teleport to Sheriff", 216, 280, 192, 26, Color3.fromRGB(35, 85, 160))
+local tpSafeZoneBtn = makeButton("TpSafeZone", "⚡ Teleport to Safe Zone", 12, 310, 396, 26, Color3.fromRGB(110, 45, 165))
+local hopServerBtn = makeButton("ServerHop", "Server Hop (New Instance)", 12, 340, 194, 26)
+local rejoinBtn = makeButton("RejoinServer", "Rejoin Current Server", 216, 340, 192, 26)
+
+makeLabel("WEAPON DETECTOR & DROPPED ITEM RECOVERY", 375)
+local wList = makeList("WeaponsList", 12, 395, 194, 90)
+local refreshWeaponsButton = makeButton("FindWeapons", "Scan Map for Items", 216, 395, 192, 26)
+local teleportWeaponButton = makeButton("TeleportWeapon", "Teleport & Grab Weapon", 216, 424, 192, 26, Color3.fromRGB(35, 125, 83))
+local autoWeaponButton = makeButton("AutoWeaponButton", "Auto Fetch Dropped Gun: OFF", 216, 453, 192, 26)
+
+makeLabel("MOVEMENT CONFIGURATIONS & NO-CLIP MATRIX", 495)
+local speedInput = Instance.new("TextBox")
+speedInput.Size = UDim2.fromOffset(70, 26)
+speedInput.Position = UDim2.fromOffset(12, 515)
+speedInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
+speedInput.Text = "32"
+speedInput.TextColor3 = Color3.new(1, 1, 1)
+speedInput.TextSize = 12
+speedInput.Font = Enum.Font.Gotham
+speedInput.ClearTextOnFocus = false
+speedInput.Parent = content
+Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 6)
+
+local applySpeedButton = makeButton("SetWalk", "Set Velocity", 86, 515, 66, 26)
+local speedButton = makeButton("SpeedButton", "WalkSpeed Vector: OFF", 156, 515, 124, 26)
+local noClipButton = makeButton("NoClipButton", "Noclip Collision: OFF", 284, 515, 124, 26)
+
+makeLabel("VISUAL SENSORS & WALLHACK / ESP RADIUS", 550)
+local espButton = makeButton("ESPButton", "Enable Tracking ESP: OFF", 12, 570, 130, 26)
+local namesButton = makeButton("NamesButton", "ESP Names: ON", 146, 570, 134, 26)
+local chamsButton = makeButton("ChamsButton", "ESP Chams: ON", 284, 570, 124, 26)
+
+makeLabel("VIP PERFORMANCE BOOSTER & AUXILIARY CONTROLS", 605)
+local jumpPowerInput = Instance.new("TextBox")
+jumpPowerInput.Size = UDim2.fromOffset(70, 26)
+jumpPowerInput.Position = UDim2.fromOffset(12, 625)
+jumpPowerInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
+jumpPowerInput.Text = "50"
+jumpPowerInput.TextColor3 = Color3.new(1, 1, 1)
+jumpPowerInput.TextSize = 12
+jumpPowerInput.Font = Enum.Font.Gotham
+jumpPowerInput.ClearTextOnFocus = false
+jumpPowerInput.Parent = content
+Instance.new("UICorner", jumpPowerInput).CornerRadius = UDim.new(0, 6)
+
+local applyJumpButton = makeButton("SetJump", "Set Jump", 86, 625, 66, 26)
+local airJumpButton = makeButton("AirJumpButton", "Infinite Air Jump: OFF", 156, 625, 252, 26)
+
+local flySpeedInput = Instance.new("TextBox")
+flySpeedInput.Size = UDim2.fromOffset(70, 26)
+flySpeedInput.Position = UDim2.fromOffset(12, 655)
+flySpeedInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
+flySpeedInput.Text = "60"
+flySpeedInput.TextColor3 = Color3.new(1, 1, 1)
+flySpeedInput.TextSize = 12
+flySpeedInput.Font = Enum.Font.Gotham
+flySpeedInput.ClearTextOnFocus = false
+flySpeedInput.Parent = content
+Instance.new("UICorner", flySpeedInput).CornerRadius = UDim.new(0, 6)
+
+local applyFlySpeedButton = makeButton("SetFlySpeed", "Set Fly", 86, 655, 66, 26)
+local flyButton = makeButton("FlyButton", "Fly Navigation Mode: OFF", 156, 655, 252, 26)
+
+makeLabel("ORBIT ROTATION ENGINES & KINETIC SYSTEMS", 690)
+local orbitDistInput = Instance.new("TextBox")
+orbitDistInput.Size = UDim2.fromOffset(70, 26)
+orbitDistInput.Position = UDim2.fromOffset(12, 710)
+orbitDistInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
+orbitDistInput.Text = "6"
+orbitDistInput.TextColor3 = Color3.new(1, 1, 1)
+orbitDistInput.TextSize = 12
+orbitDistInput.Font = Enum.Font.Gotham
+orbitDistInput.ClearTextOnFocus = false
+orbitDistInput.Parent = content
+Instance.new("UICorner", orbitDistInput).CornerRadius = UDim.new(0, 6)
+
+local applyOrbitDistButton = makeButton("SetOrbitDist", "Orbit Radial Bounds", 86, 710, 114, 26)
+local orbitButton = makeButton("OrbitButton", "Orbit Target Sequence: OFF", 204, 710, 204, 26)
+
+local spinInput = Instance.new("TextBox")
+spinInput.Size = UDim2.fromOffset(70, 26)
+spinInput.Position = UDim2.fromOffset(12, 740)
+spinInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
+spinInput.Text = "5"
+spinInput.TextColor3 = Color3.new(1, 1, 1)
+spinInput.TextSize = 12
+spinInput.Font = Enum.Font.Gotham
+spinInput.ClearTextOnFocus = false
+spinInput.Parent = content
+Instance.new("UICorner", spinInput).CornerRadius = UDim.new(0, 6)
+
+local applySpinButton = makeButton("SetSpin", "Set RPM", 86, 740, 66, 26)
+local spinButton = makeButton("SpinButton", "Hyper Kinetic Spin Torq: OFF", 156, 740, 252, 26)
+
+makeLabel("ULTRA DISRUPTOR MECHANICS & SAFETY PERKS", 775)
+local coinFarmButton = makeButton("CoinFarmButton", "Candy/Coin Auto-Farm: OFF", 12, 795, 194, 26)
+local oxygenButton = makeButton("OxygenButton", "Infinite Oxygen Tracker: OFF", 216, 795, 192, 26)
+local shieldButton = makeButton("ShieldButton", "Auto Anti-Knife Shield: OFF", 12, 825, 194, 26)
+local trapButton = makeButton("TrapButton", "Auto Destroy Map Traps: OFF", 216, 825, 192, 26)
+local maxZoomButton = makeButton("MaxZoomButton", "Unlock Max Camera Zoom Bounds", 12, 855, 194, 26)
+local fovButton = makeButton("FovButton", "Field of View Optics: 70", 216, 855, 192, 26)
+local fullBrightButton = makeButton("FullbrightButton", "Fullbright System: OFF", 12, 885, 396, 26)
+
+makeLabel("TELEMETRY LOGS & COMPREHENSIVE RECON DATA", 925)
+local results = makeList("Results", 12, 945, 396, 120)
+
+-- Core Control Integrations
+local function setAimbot(enabled)
+    aimbotEnabled = enabled
+    aimbotButton.Text = enabled and "Aim Lock Active (Camera Snapped)" or "Lock Camera View (Aim Lock): OFF"
+    aimbotButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(150, 45, 45)
+    if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection = nil end
+    if enabled then
+        aimbotConnection = RunService.RenderStepped:Connect(function()
+            if not aimbotEnabled or not selectedPlayer or not selectedPlayer.Parent then return end
+            local _, _, targetRoot = getParts(selectedPlayer)
+            if targetRoot then
+                local camera = Workspace.CurrentCamera
+                if camera then
+                    local char = selectedPlayer.Character
+                    local targetPart = char and (char:FindFirstChild(aimbotBone) or targetRoot)
+                    if targetPart then
+                        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPart.Position)
+                    end
+                end
+            end
+        end)
+        status.Text = "Tracking vectors toward " .. aimbotBone .. " target bone."
+    else
+        status.Text = "Aimbot core standby."
+    end
+end
+
+local function refreshWeapons()
+    local weaponList = content:FindFirstChild("WeaponsList")
+    if not weaponList then return end
+    clearList(weaponList)
+    table.clear(weaponRowButtons)
+    selectedWeapon = nil
+    local found = {}
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        local name = obj.Name:lower()
+        local matches = name:find("gun") or name:find("revolver") or name:find("knife") or name:find("sheriff")
+        if matches and (obj:IsA("Tool") or obj:IsA("Model")) and not isPlayerInventoryItem(obj) then
+            if getWorldPosition(obj) then table.insert(found, obj) end
+        end
+    end
+    for i, obj in ipairs(found) do
+        local button = addRow(weaponList, obj.Name .. " [" .. i .. "]", function()
+            selectedWeapon = obj
+            for item, row in pairs(weaponRowButtons) do
+                row.BackgroundColor3 = (item == obj) and Color3.fromRGB(75, 135, 255) or Color3.fromRGB(30, 34, 46)
+            end
+            status.Text = "Selected dropped gear target: " .. obj.Name
+        end)
+        weaponRowButtons[obj] = button
+    end
+    status.Text = "Identified " .. #found .. " items resting across map bounds."
+end
+
+local function scanPlayerWeapons()
+    clearList(results)
+    local list = Players:GetPlayers()
+    table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
+    for _, player in ipairs(list) do
+        local character = player.Character
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        local found = {}
+        for _, container in ipairs({backpack, character}) do
+            if container then
+                for _, name in ipairs({"Knife", "Gun", "Revolver"}) do
+                    local tool = container:FindFirstChild(name)
+                    if tool and tool:IsA("Tool") and not table.find(found, name) then
+                        table.insert(found, name)
+                    end
+                end
+            end
+        end
+        local roleText = "UNKNOWN INNOCENT"
+        local roleColor = Color3.fromRGB(220, 225, 235)
+        if table.find(found, "Knife") then
+            roleText = "🚨 MURDERER"
+            roleColor = Color3.fromRGB(255, 65, 70)
+        elseif table.find(found, "Gun") or table.find(found, "Revolver") then
+            roleText = "⭐ SHERIFF"
+            roleColor = Color3.fromRGB(65, 145, 255)
+        end
+        local text = player.Name .. "  |  " .. roleText .. (#found > 0 and ("  [" .. table.concat(found, ", ") .. "]") or "")
+        local row = addRow(results, text, function()
+            selectedPlayer = player
+            status.Text = "Diagnostic telemetry stream hooked on: " .. player.Name
+        end)
+        row.TextColor3 = roleColor
+    end
+    status.Text = "Comprehensive network grid audit complete."
+end
+
 local function setESP(enabled)
     espEnabled = enabled
-    espButton.Text = enabled and "Player ESP: ON" or "Player ESP: OFF"
-    espButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(49, 78, 130)
+    espButton.Text = enabled and "Tracking ESP: ON" or "Enable Tracking ESP: OFF"
+    espButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
     if not enabled then
         for player in pairs(espObjects) do clearESP(player) end
     else
@@ -485,55 +935,46 @@ local function setESPNames(enabled)
     end
 end
 
+local function setESPChams(enabled)
+    espChamsEnabled = enabled
+    chamsButton.Text = enabled and "ESP Chams: ON" or "ESP Chams: OFF"
+    for _, entry in pairs(espObjects) do
+        if entry.highlight then entry.highlight.Enabled = enabled end
+    end
+end
+
 local function setSpeed(enabled)
     speedEnabled = enabled
-    speedButton.Text = enabled and "Speed: ON" or "Speed: OFF"
-    speedButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(49, 78, 130)
+    speedButton.Text = enabled and "WalkSpeed: ON" or "WalkSpeed Vector: OFF"
+    speedButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
     local _, humanoid = getParts(localPlayer)
     if humanoid then humanoid.WalkSpeed = enabled and speedValue or 16 end
 end
 
 local function applySpeed()
     local value = tonumber(speedInput.Text)
-    if not value then
-        status.Text = "Enter a speed from 16 to 100."
-        return
-    end
+    if not value then status.Text = "Bounds limit: 16 to 100 studs."; return end
     speedValue = math.clamp(math.floor(value), 16, 100)
     speedInput.Text = tostring(speedValue)
     if speedEnabled then
         local _, humanoid = getParts(localPlayer)
         if humanoid then humanoid.WalkSpeed = speedValue end
     end
-    status.Text = "Speed value set to " .. speedValue .. "."
-end
-
-local function restoreCollision()
-    for part, original in pairs(originalCollision) do
-        if part and part.Parent then part.CanCollide = original end
-    end
-    table.clear(originalCollision)
+    status.Text = "WalkSpeed scalar adjusted to " .. speedValue .. "."
 end
 
 local function setNoClip(enabled)
     noClipEnabled = enabled
-    noClipButton.Text = enabled and "No-clip: ON" or "No-clip: OFF"
-    noClipButton.BackgroundColor3 = enabled and Color3.fromRGB(170, 105, 45) or Color3.fromRGB(49, 78, 130)
-
-    if noClipConnection then
-        noClipConnection:Disconnect()
-        noClipConnection = nil
-    end
-
+    noClipButton.Text = enabled and "Noclip: ON" or "Noclip Collision: OFF"
+    noClipButton.BackgroundColor3 = enabled and Color3.fromRGB(160, 95, 40) or Color3.fromRGB(45, 70, 120)
+    if noClipConnection then noClipConnection:Disconnect(); noClipConnection = nil end
     if enabled then
         noClipConnection = RunService.Stepped:Connect(function()
             local character = localPlayer.Character
             if not character then return end
             for _, part in ipairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
-                    if originalCollision[part] == nil then
-                        originalCollision[part] = part.CanCollide
-                    end
+                    if originalCollision[part] == nil then originalCollision[part] = part.CanCollide end
                     part.CanCollide = false
                 end
             end
@@ -543,91 +984,265 @@ local function setNoClip(enabled)
     end
 end
 
-local minimized = false
-local expandedSize = UDim2.fromOffset(420, 555)
+local function setAirJump(enabled)
+    airJumpEnabled = enabled
+    airJumpButton.Text = enabled and "Infinite Air Jump: ON" or "Infinite Air Jump: OFF"
+    airJumpButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+end
 
-local function setMinimized(enabled)
-    minimized = enabled
+local function applyJumpPower()
+    local value = tonumber(jumpPowerInput.Text)
+    if not value then status.Text = "Jump power bounds: 1-200."; return end
+    value = math.clamp(math.floor(value), 1, 200)
+    jumpPowerInput.Text = tostring(value)
+    local _, humanoid = getParts(localPlayer)
+    if humanoid then
+        humanoid.UseJumpPower = true
+        humanoid.JumpPower = value
+    end
+    status.Text = "Jump dynamic impulse modified to: " .. value .. "."
+end
 
-    -- Set the frame size explicitly so the minus button always collapses it.
+local function setFly(enabled)
+    flyEnabled = enabled
+    flyButton.Text = enabled and "Fly Mode: ON" or "Fly Navigation Mode: OFF"
+    flyButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    if flyConnection then flyConnection:Disconnect(); flyConnection = nil end
+    if flyVelocity then flyVelocity:Destroy(); flyVelocity = nil end
+    local character, humanoid, root = getParts(localPlayer)
+    if not enabled then
+        if humanoid then humanoid.PlatformStand = false end
+        status.Text = "Levitation systems deactivated."
+        return
+    end
+    if not character or not humanoid or not root then
+        status.Text = "Structural dependencies missing."
+        flyEnabled = false
+        flyButton.Text = "Fly Navigation Mode: OFF"
+        return
+    end
+    local attachment = Instance.new("Attachment")
+    attachment.Name = "MMHubFlyAttachment"
+    attachment.Parent = root
+    flyVelocity = Instance.new("LinearVelocity")
+    flyVelocity.Name = "MMHubFlyVelocity"
+    flyVelocity.Attachment0 = attachment
+    flyVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+    flyVelocity.MaxForce = math.huge
+    flyVelocity.VectorVelocity = Vector3.zero
+    flyVelocity.Parent = root
+    flyConnection = RunService.RenderStepped:Connect(function()
+        if not flyEnabled or not root.Parent then return end
+        local camera = Workspace.CurrentCamera
+        if not camera then return end
+        local move = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.yAxis end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.yAxis end
+        if move.Magnitude > 0 then move = move.Unit * flySpeed end
+        flyVelocity.VectorVelocity = move
+        humanoid.PlatformStand = true
+    end)
+    status.Text = "Flight operational. WASD to move, Space to ascend, Ctrl to descend."
+end
+
+local function setSpin(enabled)
+    spinEnabled = enabled
+    spinButton.Text = enabled and "Kinetic Spin: ON" or "Hyper Kinetic Spin Torq: OFF"
+    spinButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    if spinConnection then spinConnection:Disconnect(); spinConnection = nil end
     if enabled then
-        main.Size = UDim2.fromOffset(420, 42)
-    else
-        main.Size = expandedSize
-    end
-
-    minimize.Text = enabled and "+" or "-"
-
-    -- Hide every UI object outside the title bar while minimized.
-    for _, child in ipairs(main:GetChildren()) do
-        if child ~= top and child ~= outline then
-            if child:IsA("GuiObject") then
-                child.Visible = not enabled
+        local value = tonumber(spinInput.Text) or 5
+        spinRPS = math.clamp(value, 1, 10000)
+        spinInput.Text = tostring(spinRPS)
+        spinConnection = RunService.RenderStepped:Connect(function(dt)
+            local character, humanoid, root = getParts(localPlayer)
+            if root and humanoid and not flyEnabled then
+                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(360 * spinRPS * dt), 0)
             end
-        end
+        end)
+        status.Text = "Centrifugal rotational matrix active at " .. spinRPS .. " RPS."
+    else
+        status.Text = "Rotational torque brought to zero."
     end
-
-    -- Keep the title bar and its buttons available while minimized.
-    top.Visible = true
-    title.Visible = true
-    minimize.Visible = true
-    close.Visible = true
 end
 
-local function shutdown()
-    if not running then return end
-    running = false
-    if noClipEnabled then setNoClip(false) end
-    if speedEnabled then setSpeed(false) end
-    for player in pairs(espObjects) do clearESP(player) end
-    disconnectAll()
-    gui:Destroy()
-    script:Destroy()
+local function setOrbit(enabled)
+    orbitEnabled = enabled
+    orbitButton.Text = enabled and "Orbit Sequence: ON" or "Orbit Target Sequence: OFF"
+    orbitButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    if orbitConnection then orbitConnection:Disconnect(); orbitConnection = nil end
+    if enabled then
+        if not selectedPlayer then
+            orbitEnabled = false
+            orbitButton.Text = "Orbit Target Sequence: OFF"
+            status.Text = "Specify a target destination asset first."
+            return
+        end
+        orbitAngle = 0
+        orbitConnection = RunService.RenderStepped:Connect(function(dt)
+            if not selectedPlayer or selectedPlayer.Parent ~= Players then
+                status.Text = "Aborting orbit tracking loop: Asset disconnected."
+                setOrbit(false)
+                return
+            end
+            local _, _, targetRoot = getParts(selectedPlayer)
+            local character, humanoid, root = getParts(localPlayer)
+            if not targetRoot or not root or not character or not humanoid or humanoid.Health <= 0 then return end
+            orbitAngle += dt * 3
+            local offset = Vector3.new(math.cos(orbitAngle) * orbitDistance, 2, math.sin(orbitAngle) * orbitDistance)
+            character:PivotTo(CFrame.lookAt(targetRoot.Position + offset, targetRoot.Position))
+        end)
+        status.Text = "Linked trajectory rotation sequence on target."
+    else
+        status.Text = "Orbit connection severed safely."
+    end
 end
 
+-- GUI Rainbow UI Processing
+local hue = 0
+addConnection(RunService.RenderStepped:Connect(function(dt)
+    hue = (hue + dt * 0.15) % 1
+    if outline and outline.Parent then
+        outline.Color = Color3.fromHSV(hue, 0.8, 1)
+    end
+end))
+
+-- Core Interactivity Events Routing Connectors
 addConnection(minimize.Activated:Connect(function()
-    setMinimized(not minimized)
+    content.Visible = not content.Visible
+    main.Size = content.Visible and UDim2.fromOffset(430, 580) or UDim2.fromOffset(430, 42)
+    minimize.Text = content.Visible and "-" or "+"
 end))
 
 addConnection(refreshPlayersButton.Activated:Connect(refreshPlayers))
 addConnection(teleportPlayerButton.Activated:Connect(function()
-    if not selectedPlayer then status.Text = "Select a player first."; return end
+    if not selectedPlayer then status.Text = "Acquire a target locking index first."; return end
     local _, _, root = getParts(selectedPlayer)
-    if not root then status.Text = "Selected player's character isn't ready."; return end
-    teleportTo(root.CFrame)
+    if root then teleportTo(root.CFrame + Vector3.new(0, 3, 0)) end
 end))
+
+addConnection(spectateButton.Activated:Connect(function()
+    spectateEnabled = not spectateEnabled
+    spectateButton.Text = spectateEnabled and "Spectate Target: ON" or "Spectate Target: OFF"
+    spectateButton.BackgroundColor3 = spectateEnabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+    local camera = Workspace.CurrentCamera
+    if spectateEnabled and selectedPlayer then
+        local _, targetHum = getParts(selectedPlayer)
+        if targetHum then camera.CameraSubject = targetHum end
+    else
+        local _, ownHum = getParts(localPlayer)
+        if ownHum then camera.CameraSubject = ownHum end
+    end
+end))
+
+addConnection(aimbotButton.Activated:Connect(function() setAimbot(not aimbotEnabled) end))
+addConnection(aimbotBoneButton.Activated:Connect(function()
+    if aimbotBone == "Head" then
+        aimbotBone = "HumanoidRootPart"
+        aimbotBoneButton.Text = "Target Bone: Torso"
+    else
+        aimbotBone = "Head"
+        aimbotBoneButton.Text = "Target Bone: Head"
+    end
+    if aimbotEnabled then
+        setAimbot(false)
+        setAimbot(true)
+    end
+end))
+
+addConnection(hitboxButton.Activated:Connect(function() setHitbox(not hitboxEnabled) end))
+addConnection(killauraButton.Activated:Connect(function() setKillaura(not killauraEnabled) end))
 addConnection(scanToolsButton.Activated:Connect(scanPlayerWeapons))
 addConnection(refreshWeaponsButton.Activated:Connect(refreshWeapons))
 addConnection(teleportWeaponButton.Activated:Connect(function()
-    if not selectedWeapon or not selectedWeapon.Parent then
-        status.Text = "Find and select a dropped weapon first."
-        return
-    end
-    local targetCFrame = getWorldPosition(selectedWeapon)
-    if not targetCFrame then
-        status.Text = "Selected weapon has no position."
-        return
-    end
-    teleportTo(targetCFrame)
+    if not selectedWeapon or not selectedWeapon.Parent then status.Text = "Target drops dissolved or claimed."; return end
+    local pos = getWorldPosition(selectedWeapon)
+    if pos then teleportTo(pos) end
 end))
-addConnection(scanHintButton.Activated:Connect(function()
-    status.Text = "One LocalScript cannot securely take a server-owned weapon from another player."
+
+addConnection(autoWeaponButton.Activated:Connect(function() setAutoWeapon(not autoWeaponEnabled) end))
+addConnection(coinFarmButton.Activated:Connect(function() setCoinFarm(not coinFarmEnabled) end))
+addConnection(oxygenButton.Activated:Connect(function() setInfiniteOxygen(not infiniteOxygenEnabled) end))
+addConnection(shieldButton.Activated:Connect(function() setAutoShield(not autoShieldEnabled) end))
+addConnection(trapButton.Activated:Connect(function() setTrapDisabler(not trapDisablerEnabled) end))
+addConnection(tpMurdererBtn.Activated:Connect(function() teleportToRole("MURDERER") end))
+addConnection(tpSheriffBtn.Activated:Connect(function() teleportToRole("SHERIFF") end))
+
+addConnection(tpSafeZoneBtn.Activated:Connect(function()
+    teleportTo(SAFE_ZONE_CFRAME)
+    status.Text = "Teleported to Safe Zone CFrame coordinate matrix."
 end))
+
+addConnection(hopServerBtn.Activated:Connect(serverHop))
+addConnection(rejoinBtn.Activated:Connect(rejoinServer))
+
 addConnection(applySpeedButton.Activated:Connect(applySpeed))
 addConnection(speedButton.Activated:Connect(function() setSpeed(not speedEnabled) end))
 addConnection(noClipButton.Activated:Connect(function() setNoClip(not noClipEnabled) end))
 addConnection(espButton.Activated:Connect(function() setESP(not espEnabled) end))
 addConnection(namesButton.Activated:Connect(function() setESPNames(not espNamesEnabled) end))
+addConnection(chamsButton.Activated:Connect(function() setESPChams(not espChamsEnabled) end))
+
+addConnection(applyJumpButton.Activated:Connect(applyJumpPower))
+addConnection(airJumpButton.Activated:Connect(function() setAirJump(not airJumpEnabled) end))
+
+addConnection(applyFlySpeedButton.Activated:Connect(function()
+    local val = tonumber(flySpeedInput.Text)
+    if val then flySpeed = math.clamp(math.floor(val), 1, 200); flySpeedInput.Text = tostring(flySpeed) end
+end))
+addConnection(flyButton.Activated:Connect(function() setFly(not flyEnabled) end))
+
+addConnection(applySpinButton.Activated:Connect(function()
+    local val = tonumber(spinInput.Text)
+    if val then spinRPS = math.clamp(val, 1, 10000); spinInput.Text = tostring(spinRPS); if spinEnabled then setSpin(true) end end
+end))
+addConnection(spinButton.Activated:Connect(function() setSpin(not spinEnabled) end))
+
+addConnection(applyOrbitDistButton.Activated:Connect(function()
+    local val = tonumber(orbitDistInput.Text)
+    if val then
+        orbitDistance = math.clamp(val, 0.1, 100)
+        orbitDistInput.Text = tostring(orbitDistance)
+        status.Text = "Adjusted orbital tracking grid radius to " .. orbitDistance .. " studs."
+    end
+end))
+addConnection(orbitButton.Activated:Connect(function() setOrbit(not orbitEnabled) end))
+
+addConnection(maxZoomButton.Activated:Connect(function()
+    if localPlayer.CameraMaxZoomDistance then
+        localPlayer.CameraMaxZoomDistance = 10000
+        status.Text = "Optics threshold unlocked up to 10,000 studs bounds."
+    end
+end))
+
+addConnection(fovButton.Activated:Connect(function()
+    currentFOV = currentFOV + 15
+    if currentFOV > 120 then currentFOV = 60 end
+    local camera = Workspace.CurrentCamera
+    if camera then camera.FieldOfView = currentFOV end
+    fovButton.Text = "Field of View Optics: " .. currentFOV
+end))
+addConnection(fullBrightButton.Activated:Connect(function() setFullBright(not fullBrightEnabled) end))
+
+-- Hardware Key Inbound Listeners
+addConnection(UserInputService.JumpRequest:Connect(function()
+    if not airJumpEnabled then return end
+    local _, humanoid = getParts(localPlayer)
+    if humanoid and humanoid.FloorMaterial == Enum.Material.Air then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end))
+
 addConnection(close.Activated:Connect(shutdown))
 
--- Drag window by title bar
-local dragging = false
-local dragStart
-local startPosition
-
+-- UI Mouse Drag Modules Execution
+local dragging, dragStart, startPosition = false, nil, nil
 addConnection(title.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPosition = main.Position
@@ -643,65 +1258,33 @@ addConnection(title.InputBegan:Connect(function(input)
 end))
 
 addConnection(UserInputService.InputChanged:Connect(function(input)
-    if dragging and dragStart and startPosition
-        and (input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch) then
+    if dragging and dragStart and startPosition and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        main.Position = UDim2.new(
-            startPosition.X.Scale, startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
-        )
+        main.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y)
     end
 end))
 
 addConnection(UserInputService.InputBegan:Connect(function(input, processed)
     if processed or not running then return end
-    if input.KeyCode == Enum.KeyCode.H then
-        main.Visible = not main.Visible
-    elseif input.KeyCode == Enum.KeyCode.X then
-        shutdown()
-    end
+    if input.KeyCode == Enum.KeyCode.H then main.Visible = not main.Visible
+    elseif input.KeyCode == Enum.KeyCode.X then shutdown() end
 end))
 
-addConnection(Players.PlayerRemoving:Connect(function(player)
-    clearESP(player)
-end))
-
-for _, player in ipairs(Players:GetPlayers()) do
-    addConnection(player.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        if running and espEnabled then updateESP(player) end
-    end))
-end
-
-addConnection(Players.PlayerAdded:Connect(function(player)
-    addConnection(player.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        if running and espEnabled then updateESP(player) end
-    end))
-    if espEnabled then updateESP(player) end
-end))
-
+addConnection(Players.PlayerRemoving:Connect(clearESP))
 addConnection(RunService.Heartbeat:Connect(function()
-    if running and espEnabled then
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= localPlayer then updateESP(player) end
+    if running then
+        if espEnabled then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= localPlayer then updateESP(player) end
+            end
+        end
+        if hitboxEnabled then
+            updateHitboxes()
         end
     end
 end))
 
-addConnection(localPlayer.CharacterAdded:Connect(function(character)
-    local humanoid = character:WaitForChild("Humanoid", 5)
-    if humanoid then
-        humanoid.WalkSpeed = speedEnabled and speedValue or 16
-    end
-    if noClipEnabled then
-        task.defer(function()
-            if running then setNoClip(true) end
-        end)
-    end
-end))
-
+-- Engine Initialize Telemetry Stream
 refreshPlayers()
 refreshWeapons()
 scanPlayerWeapons()
