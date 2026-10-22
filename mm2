@@ -1,0 +1,648 @@
+-- Murder Mystery Utility Hub (Single LocalScript)
+-- Place in StarterPlayer > StarterPlayerScripts in YOUR Roblox Studio game.
+-- H = toggle menu; X = close permanently.
+--
+-- Includes:
+-- * Player list + teleport to selected player
+-- * Player ESP outlines + names + tool-based hints
+-- * Scan player tools (Knife / Gun / Revolver)
+-- * Find dropped weapon Tools/Models and teleport to them
+-- * Adjustable WalkSpeed
+-- * No-clip toggle with collision restoration
+--
+-- Note: A LocalScript cannot securely remove a weapon from another player's
+-- server-controlled inventory. A real transfer needs your game's server logic.
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+local GUI_NAME = "MMUtilityHubSingleScript"
+
+local previous = playerGui:FindFirstChild(GUI_NAME)
+if previous then previous:Destroy() end
+
+local running = true
+local connections = {}
+local espObjects = {}
+local playerRowButtons = {}
+local weaponRowButtons = {}
+local selectedPlayer = nil
+local selectedWeapon = nil
+local espEnabled = false
+local espNamesEnabled = true
+local speedEnabled = false
+local speedValue = 32
+local noClipEnabled = false
+local originalCollision = {}
+local noClipConnection = nil
+
+local function addConnection(connection)
+    table.insert(connections, connection)
+    return connection
+end
+
+local function disconnectAll()
+    for _, connection in ipairs(connections) do
+        if connection and connection.Connected then
+            connection:Disconnect()
+        end
+    end
+    table.clear(connections)
+    if noClipConnection then
+        noClipConnection:Disconnect()
+        noClipConnection = nil
+    end
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = GUI_NAME
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 100
+gui.Parent = playerGui
+
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.Size = UDim2.fromOffset(420, 555)
+main.Position = UDim2.new(0, 22, 0.12, 0)
+main.BackgroundColor3 = Color3.fromRGB(22, 24, 32)
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+local outline = Instance.new("UIStroke")
+outline.Color = Color3.fromRGB(75, 135, 255)
+outline.Thickness = 1.5
+outline.Parent = main
+
+local top = Instance.new("Frame")
+top.Size = UDim2.new(1, 0, 0, 42)
+top.BackgroundColor3 = Color3.fromRGB(31, 35, 47)
+top.BorderSizePixel = 0
+top.Parent = main
+Instance.new("UICorner", top).CornerRadius = UDim.new(0, 12)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -55, 1, 0)
+title.Position = UDim2.fromOffset(13, 0)
+title.BackgroundTransparency = 1
+title.Text = "MURDER MYSTERY  •  UTILITY HUB"
+title.TextColor3 = Color3.fromRGB(245, 247, 255)
+title.TextSize = 14
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Active = true
+title.Parent = top
+
+local close = Instance.new("TextButton")
+close.Size = UDim2.fromOffset(30, 28)
+close.Position = UDim2.new(1, -36, 0, 7)
+close.BackgroundColor3 = Color3.fromRGB(190, 55, 65)
+close.Text = "X"
+close.TextColor3 = Color3.new(1, 1, 1)
+close.TextSize = 14
+close.Font = Enum.Font.GothamBold
+close.Parent = top
+Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -24, 0, 24)
+status.Position = UDim2.fromOffset(12, 46)
+status.BackgroundTransparency = 1
+status.Text = "H: hide/show  •  X: exit"
+status.TextColor3 = Color3.fromRGB(165, 174, 195)
+status.TextSize = 11
+status.Font = Enum.Font.Gotham
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.Parent = main
+
+local function makeLabel(text, y)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -24, 0, 20)
+    label.Position = UDim2.fromOffset(12, y)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(220, 225, 240)
+    label.TextSize = 12
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = main
+    return label
+end
+
+local function makeButton(text, x, y, w, h, color)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.fromOffset(w, h)
+    button.Position = UDim2.fromOffset(x, y)
+    button.BackgroundColor3 = color or Color3.fromRGB(49, 78, 130)
+    button.Text = text
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.TextSize = 11
+    button.Font = Enum.Font.GothamMedium
+    button.TextWrapped = true
+    button.Parent = main
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+    return button
+end
+
+local function makeList(name, x, y, w, h)
+    local list = Instance.new("ScrollingFrame")
+    list.Name = name
+    list.Size = UDim2.fromOffset(w, h)
+    list.Position = UDim2.fromOffset(x, y)
+    list.BackgroundColor3 = Color3.fromRGB(15, 17, 23)
+    list.BorderSizePixel = 0
+    list.ScrollBarThickness = 4
+    list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    list.CanvasSize = UDim2.new()
+    list.Parent = main
+    Instance.new("UICorner", list).CornerRadius = UDim.new(0, 7)
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 4)
+    padding.PaddingLeft = UDim.new(0, 4)
+    padding.PaddingRight = UDim.new(0, 4)
+    padding.Parent = list
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 3)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = list
+    return list
+end
+
+makeLabel("PLAYERS", 72)
+local playerList = makeList("Players", 12, 94, 194, 105)
+local refreshPlayersButton = makeButton("Refresh", 216, 94, 192, 28)
+local teleportPlayerButton = makeButton("Teleport to selected", 216, 128, 192, 28, Color3.fromRGB(35, 125, 83))
+local scanToolsButton = makeButton("Scan player weapons", 216, 162, 192, 28)
+
+makeLabel("DROPPED WEAPONS", 207)
+local weaponList = makeList("Weapons", 12, 229, 194, 92)
+local refreshWeaponsButton = makeButton("Find dropped weapons", 216, 229, 192, 28)
+local teleportWeaponButton = makeButton("Teleport to selected weapon", 216, 263, 192, 28, Color3.fromRGB(35, 125, 83))
+local scanHintButton = makeButton("Weapon transfer info", 216, 297, 192, 28)
+
+makeLabel("MOVEMENT", 330)
+local speedInput = Instance.new("TextBox")
+speedInput.Size = UDim2.fromOffset(74, 28)
+speedInput.Position = UDim2.fromOffset(12, 352)
+speedInput.BackgroundColor3 = Color3.fromRGB(39, 42, 53)
+speedInput.Text = "32"
+speedInput.PlaceholderText = "16-100"
+speedInput.TextColor3 = Color3.new(1, 1, 1)
+speedInput.TextSize = 12
+speedInput.Font = Enum.Font.Gotham
+speedInput.ClearTextOnFocus = false
+speedInput.Parent = main
+Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 6)
+
+local applySpeedButton = makeButton("Apply", 92, 352, 66, 28)
+local speedButton = makeButton("Speed: OFF", 164, 352, 116, 28)
+local noClipButton = makeButton("No-clip: OFF", 286, 352, 122, 28)
+
+local espButton = makeButton("Player ESP: OFF", 12, 386, 194, 28)
+local namesButton = makeButton("ESP Names: ON", 216, 386, 192, 28)
+
+makeLabel("SCAN RESULTS", 420)
+local results = makeList("Results", 12, 442, 396, 98)
+
+local function getParts(player)
+    local character = player and player.Character
+    if not character then return nil, nil, nil end
+    return character, character:FindFirstChildOfClass("Humanoid"), character:FindFirstChild("HumanoidRootPart")
+end
+
+local function teleportTo(cframe)
+    local character, humanoid, root = getParts(localPlayer)
+    if not character or not root then
+        status.Text = "Your character isn't ready."
+        return
+    end
+    character:PivotTo(cframe + Vector3.new(0, 3, 0))
+    status.Text = "Teleport attempted; server may correct movement."
+end
+
+local function clearList(list)
+    for _, child in ipairs(list:GetChildren()) do
+        if child:IsA("TextButton") or child:IsA("TextLabel") then
+            child:Destroy()
+        end
+    end
+end
+
+local function addRow(list, text, onClick)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -4, 0, 25)
+    button.BackgroundColor3 = Color3.fromRGB(36, 40, 52)
+    button.Text = text
+    button.TextColor3 = Color3.fromRGB(235, 238, 247)
+    button.TextSize = 10
+    button.Font = Enum.Font.Gotham
+    button.TextTruncate = Enum.TextTruncate.AtEnd
+    button.Parent = list
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 4)
+    addConnection(button.Activated:Connect(onClick))
+    return button
+end
+
+local function refreshPlayers()
+    clearList(playerList)
+    table.clear(playerRowButtons)
+    selectedPlayer = nil
+
+    local list = Players:GetPlayers()
+    table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
+
+    for _, player in ipairs(list) do
+        if player ~= localPlayer then
+            local button = addRow(playerList, player.DisplayName .. " (@" .. player.Name .. ")", function()
+                selectedPlayer = player
+                for p, row in pairs(playerRowButtons) do
+                    row.BackgroundColor3 = (p == player) and Color3.fromRGB(48, 100, 170) or Color3.fromRGB(36, 40, 52)
+                end
+                status.Text = "Selected player: " .. player.Name
+            end)
+            playerRowButtons[player] = button
+        end
+    end
+    status.Text = "Player list refreshed."
+end
+
+local function isPlayerInventoryItem(obj)
+    for _, player in ipairs(Players:GetPlayers()) do
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        if player.Character and obj:IsDescendantOf(player.Character) then
+            return true
+        end
+        if backpack and obj:IsDescendantOf(backpack) then
+            return true
+        end
+    end
+    return false
+end
+
+local function getWorldPosition(obj)
+    if obj:IsA("BasePart") then
+        return obj.CFrame
+    elseif obj:IsA("Model") then
+        return obj:GetPivot()
+    elseif obj:IsA("Tool") then
+        local handle = obj:FindFirstChild("Handle")
+        if handle and handle:IsA("BasePart") then return handle.CFrame end
+        local part = obj:FindFirstChildWhichIsA("BasePart", true)
+        if part then return part.CFrame end
+    end
+    return nil
+end
+
+local function refreshWeapons()
+    clearList(weaponList)
+    table.clear(weaponRowButtons)
+    selectedWeapon = nil
+    local found = {}
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        local name = obj.Name:lower()
+        local matches = name:find("gun") or name:find("revolver")
+            or name:find("knife") or name:find("sheriff")
+        if matches and (obj:IsA("Tool") or obj:IsA("Model")) and not isPlayerInventoryItem(obj) then
+            if getWorldPosition(obj) then
+                table.insert(found, obj)
+            end
+        end
+    end
+
+    for i, obj in ipairs(found) do
+        local button = addRow(weaponList, obj.Name .. " #" .. i, function()
+            selectedWeapon = obj
+            for item, row in pairs(weaponRowButtons) do
+                row.BackgroundColor3 = (item == obj) and Color3.fromRGB(48, 100, 170) or Color3.fromRGB(36, 40, 52)
+            end
+            status.Text = "Selected weapon: " .. obj.Name
+        end)
+        weaponRowButtons[obj] = button
+    end
+    status.Text = "Found " .. #found .. " possible dropped weapon(s)."
+end
+
+local function clearResults()
+    clearList(results)
+end
+
+local function scanPlayerWeapons()
+    clearResults()
+    local list = Players:GetPlayers()
+    table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
+
+    for _, player in ipairs(list) do
+        local character = player.Character
+        local backpack = player:FindFirstChildOfClass("Backpack")
+        local found = {}
+
+        for _, container in ipairs({backpack, character}) do
+            if container then
+                for _, name in ipairs({"Knife", "Gun", "Revolver"}) do
+                    local tool = container:FindFirstChild(name)
+                    if tool and tool:IsA("Tool") and not table.find(found, name) then
+                        table.insert(found, name)
+                    end
+                end
+            end
+        end
+
+        local text = player.Name .. ": " .. (#found > 0 and table.concat(found, ", ") or "no matching tools")
+        addRow(results, text, function()
+            selectedPlayer = player
+            status.Text = "Selected " .. player.Name .. " from scan."
+        end)
+    end
+    status.Text = "Scan complete. Tool-based role guesses are not guaranteed."
+end
+
+local function getToolHint(player)
+    local character = player.Character
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    for _, container in ipairs({backpack, character}) do
+        if container then
+            if container:FindFirstChild("Knife") then
+                return Color3.fromRGB(255, 80, 85), "Possible Murderer"
+            end
+            if container:FindFirstChild("Gun") or container:FindFirstChild("Revolver") then
+                return Color3.fromRGB(75, 160, 255), "Possible Sheriff"
+            end
+        end
+    end
+    return Color3.fromRGB(255, 220, 80), "No matching tool"
+end
+
+local function clearESP(player)
+    local entry = espObjects[player]
+    if not entry then return end
+    if entry.highlight then entry.highlight:Destroy() end
+    if entry.billboard then entry.billboard:Destroy() end
+    espObjects[player] = nil
+end
+
+local function updateESP(player)
+    if not espEnabled or player == localPlayer then
+        clearESP(player)
+        return
+    end
+
+    local character, humanoid, root = getParts(player)
+    if not character or not humanoid or humanoid.Health <= 0 or not root then
+        clearESP(player)
+        return
+    end
+
+    local entry = espObjects[player]
+    if not entry then
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "MMHubESP"
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.FillTransparency = 0.82
+        highlight.OutlineTransparency = 0
+        highlight.Adornee = character
+        highlight.Parent = gui
+
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "MMHubESPLabel"
+        billboard.Size = UDim2.fromOffset(220, 42)
+        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Adornee = root
+        billboard.Parent = gui
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.fromScale(1, 1)
+        label.BackgroundTransparency = 1
+        label.TextStrokeTransparency = 0.2
+        label.TextSize = 12
+        label.Font = Enum.Font.GothamBold
+        label.TextWrapped = true
+        label.Parent = billboard
+
+        entry = {highlight = highlight, billboard = billboard, label = label}
+        espObjects[player] = entry
+    else
+        entry.highlight.Adornee = character
+        entry.billboard.Adornee = root
+    end
+
+    local color, hint = getToolHint(player)
+    entry.highlight.FillColor = color
+    entry.highlight.OutlineColor = color
+    entry.billboard.Enabled = espNamesEnabled
+    entry.label.TextColor3 = color
+    entry.label.Text = player.DisplayName .. " (@" .. player.Name .. ")\n" .. hint
+end
+
+local function setESP(enabled)
+    espEnabled = enabled
+    espButton.Text = enabled and "Player ESP: ON" or "Player ESP: OFF"
+    espButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(49, 78, 130)
+    if not enabled then
+        for player in pairs(espObjects) do clearESP(player) end
+    else
+        for _, player in ipairs(Players:GetPlayers()) do updateESP(player) end
+    end
+end
+
+local function setESPNames(enabled)
+    espNamesEnabled = enabled
+    namesButton.Text = enabled and "ESP Names: ON" or "ESP Names: OFF"
+    for _, entry in pairs(espObjects) do
+        if entry.billboard then entry.billboard.Enabled = enabled end
+    end
+end
+
+local function setSpeed(enabled)
+    speedEnabled = enabled
+    speedButton.Text = enabled and "Speed: ON" or "Speed: OFF"
+    speedButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(49, 78, 130)
+    local _, humanoid = getParts(localPlayer)
+    if humanoid then humanoid.WalkSpeed = enabled and speedValue or 16 end
+end
+
+local function applySpeed()
+    local value = tonumber(speedInput.Text)
+    if not value then
+        status.Text = "Enter a speed from 16 to 100."
+        return
+    end
+    speedValue = math.clamp(math.floor(value), 16, 100)
+    speedInput.Text = tostring(speedValue)
+    if speedEnabled then
+        local _, humanoid = getParts(localPlayer)
+        if humanoid then humanoid.WalkSpeed = speedValue end
+    end
+    status.Text = "Speed value set to " .. speedValue .. "."
+end
+
+local function restoreCollision()
+    for part, original in pairs(originalCollision) do
+        if part and part.Parent then part.CanCollide = original end
+    end
+    table.clear(originalCollision)
+end
+
+local function setNoClip(enabled)
+    noClipEnabled = enabled
+    noClipButton.Text = enabled and "No-clip: ON" or "No-clip: OFF"
+    noClipButton.BackgroundColor3 = enabled and Color3.fromRGB(170, 105, 45) or Color3.fromRGB(49, 78, 130)
+
+    if noClipConnection then
+        noClipConnection:Disconnect()
+        noClipConnection = nil
+    end
+
+    if enabled then
+        noClipConnection = RunService.Stepped:Connect(function()
+            local character = localPlayer.Character
+            if not character then return end
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    if originalCollision[part] == nil then
+                        originalCollision[part] = part.CanCollide
+                    end
+                    part.CanCollide = false
+                end
+            end
+        end)
+    else
+        restoreCollision()
+    end
+end
+
+local function shutdown()
+    if not running then return end
+    running = false
+    if noClipEnabled then setNoClip(false) end
+    if speedEnabled then setSpeed(false) end
+    for player in pairs(espObjects) do clearESP(player) end
+    disconnectAll()
+    gui:Destroy()
+    script:Destroy()
+end
+
+addConnection(refreshPlayersButton.Activated:Connect(refreshPlayers))
+addConnection(teleportPlayerButton.Activated:Connect(function()
+    if not selectedPlayer then status.Text = "Select a player first."; return end
+    local _, _, root = getParts(selectedPlayer)
+    if not root then status.Text = "Selected player's character isn't ready."; return end
+    teleportTo(root.CFrame)
+end))
+addConnection(scanToolsButton.Activated:Connect(scanPlayerWeapons))
+addConnection(refreshWeaponsButton.Activated:Connect(refreshWeapons))
+addConnection(teleportWeaponButton.Activated:Connect(function()
+    if not selectedWeapon or not selectedWeapon.Parent then
+        status.Text = "Find and select a dropped weapon first."
+        return
+    end
+    local targetCFrame = getWorldPosition(selectedWeapon)
+    if not targetCFrame then
+        status.Text = "Selected weapon has no position."
+        return
+    end
+    teleportTo(targetCFrame)
+end))
+addConnection(scanHintButton.Activated:Connect(function()
+    status.Text = "One LocalScript cannot securely take a server-owned weapon from another player."
+end))
+addConnection(applySpeedButton.Activated:Connect(applySpeed))
+addConnection(speedButton.Activated:Connect(function() setSpeed(not speedEnabled) end))
+addConnection(noClipButton.Activated:Connect(function() setNoClip(not noClipEnabled) end))
+addConnection(espButton.Activated:Connect(function() setESP(not espEnabled) end))
+addConnection(namesButton.Activated:Connect(function() setESPNames(not espNamesEnabled) end))
+addConnection(close.Activated:Connect(shutdown))
+
+-- Drag window by title bar
+local dragging = false
+local dragStart
+local startPosition
+
+addConnection(title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPosition = main.Position
+        local ended
+        ended = input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                if ended then ended:Disconnect() end
+            end
+        end)
+        addConnection(ended)
+    end
+end))
+
+addConnection(UserInputService.InputChanged:Connect(function(input)
+    if dragging and dragStart and startPosition
+        and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(
+            startPosition.X.Scale, startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
+        )
+    end
+end))
+
+addConnection(UserInputService.InputBegan:Connect(function(input, processed)
+    if processed or not running then return end
+    if input.KeyCode == Enum.KeyCode.H then
+        main.Visible = not main.Visible
+    elseif input.KeyCode == Enum.KeyCode.X then
+        shutdown()
+    end
+end))
+
+addConnection(Players.PlayerRemoving:Connect(function(player)
+    clearESP(player)
+end))
+
+for _, player in ipairs(Players:GetPlayers()) do
+    addConnection(player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        if running and espEnabled then updateESP(player) end
+    end))
+end
+
+addConnection(Players.PlayerAdded:Connect(function(player)
+    addConnection(player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        if running and espEnabled then updateESP(player) end
+    end))
+    if espEnabled then updateESP(player) end
+end))
+
+addConnection(RunService.Heartbeat:Connect(function()
+    if running and espEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer then updateESP(player) end
+        end
+    end
+end))
+
+addConnection(localPlayer.CharacterAdded:Connect(function(character)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        humanoid.WalkSpeed = speedEnabled and speedValue or 16
+    end
+    if noClipEnabled then
+        task.defer(function()
+            if running then setNoClip(true) end
+        end)
+    end
+end))
+
+refreshPlayers()
+refreshWeapons()
+scanPlayerWeapons()
