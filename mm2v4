@@ -1,5 +1,5 @@
--- Murder Mystery Utility Hub (Enhanced V13 VIP Overlord Mythic Edition)
--- Place in StarterPlayer > StarterPlayerScripts in YOUR Roblox Studio game.
+-- Murder Mystery Utility Hub (Enhanced V14 VIP Overlord Mythic Velocity Edition)
+-- Fixed and completely optimized for the Velocity Executor platform environment.
 -- H = Toggle Menu; X = Close/Destruct Permanently.
 
 local Players = game:GetService("Players")
@@ -13,7 +13,7 @@ local HttpService = game:GetService("HttpService")
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
-local GUI_NAME = "MMUtilityHubEnhancedV13"
+local GUI_NAME = "MMUtilityHubEnhancedV14_Velocity"
 
 -- Destroy previous instances cleanly
 local previous = playerGui:FindFirstChild(GUI_NAME)
@@ -56,14 +56,16 @@ local aimbotEnabled = false
 local aimbotConnection = nil
 local aimbotBone = "Head" 
 
--- Advanced State Pack V13
+-- Advanced State Pack V14
 local hitboxEnabled = false
-local hitboxSize = 15
+local hitboxSizeMultiplier = 15.0
 local hitboxTransparency = 0.4
 local killauraEnabled = false
 local killauraConnection = nil
+local policeAlertsEnabled = false
 local coinFarmEnabled = false
 local coinFarmConnection = nil
+local coinFlySpeed = 50
 local autoWeaponEnabled = false
 local autoWeaponConnection = nil
 local infiniteOxygenEnabled = false
@@ -73,7 +75,7 @@ local shieldConnection = nil
 local trapDisablerEnabled = false
 local trapConnection = nil
 
--- Premium Features V13 Ultra Master Setup
+-- Premium Features V14 Ultra Master Setup
 local antiDieEnabled = false
 local antiDieConnection = nil
 local fakeLagEnabled = false
@@ -81,7 +83,9 @@ local fakeLagConnection = nil
 local aimbotFovRadius = 150
 local fovCircle = nil
 
--- NEW V13 MASTER PREMIUM STATES
+-- V14 SPECIFIC EXTENSION STATES
+local sheriffAuraEnabled = false
+local sheriffAuraConnection = nil
 local autoKillMurdEnabled = false
 local autoKillMurdConnection = nil
 local wallWalkhackEnabled = false
@@ -94,7 +98,7 @@ local toxicSpamEnabled = false
 local toxicSpamConnection = nil
 
 -- --- CONFIGURATION FOR AUTO FARM DELAY ---
-local farmCooldown = 1.5
+local farmCooldown = 0.2
 local lastFarmTeleport = 0
 
 -- Explicit Safe Zone Configuration
@@ -132,6 +136,7 @@ local function disconnectAll()
     if autoKillMurdConnection then autoKillMurdConnection:Disconnect(); autoKillMurdConnection = nil end
     if antiRagdollConnection then antiRagdollConnection:Disconnect(); antiRagdollConnection = nil end
     if toxicSpamConnection then toxicSpamConnection:Disconnect(); toxicSpamConnection = nil end
+    if sheriffAuraConnection then sheriffAuraConnection:Disconnect(); sheriffAuraConnection = nil end
 end
 
 local function getParts(player)
@@ -271,13 +276,12 @@ local function updateESP(player)
         highlight.Parent = gui
 
         local billboard = Instance.new("BillboardGui")
-        billboard.Name = "MMHubESPLabel"
-        billboard.Size = UDim2.fromOffset(220, 42)
-        billboard.StudsOffset = Vector3.new(0, 3.5, 0)
-        billboard.AlwaysOnTop = true
-        billboard.Adornee = root
-        billboard.Parent = gui
-
+billboard.Name = "MMHubESPLabel"
+billboard.Size = UDim2.fromOffset(220, 42)
+billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+billboard.AlwaysOnTop = true
+billboard.Adornee = root
+billboard.Parent = gui
 local label = Instance.new("TextLabel")
 label.Size = UDim2.new(1, 1)
 label.BackgroundTransparency = 1
@@ -354,14 +358,15 @@ end
 end
 status.Text = "Stream Refreshed."
 end
--- Hitbox Matrix Engine
+-- Hitbox Matrix Engine (Dynamically scales matching original Roblox limits up to 100x values)
 local function updateHitboxes()
 for _, player in ipairs(Players:GetPlayers()) do
 if player ~= localPlayer and player.Character then
 local root = player.Character:FindFirstChild("HumanoidRootPart")
 if root then
 if hitboxEnabled then
-root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+local calculatedSize = 2 * hitboxSizeMultiplier
+root.Size = Vector3.new(calculatedSize, calculatedSize, calculatedSize)
 root.Transparency = hitboxTransparency
 root.Color = Color3.fromRGB(255, 65, 70)
 root.Material = Enum.Material.Neon
@@ -410,6 +415,18 @@ if firetouchinterest then
 firetouchinterest(targetRoot, knife.Handle, 0)
 firetouchinterest(targetRoot, knife.Handle, 1)
 end
+if policeAlertsEnabled then
+task.spawn(function()
+local sg = game:GetService("StarterGui")
+if sg then
+sg:SetCore("SendNotification", {
+Title = "🚨 POLICE ALERT",
+Text = "Target dispatched dynamically via Kill Aura: " .. player.Name,
+Duration = 2
+})
+end
+end)
+end
 end
 end
 end
@@ -417,45 +434,78 @@ end
 end)
 end
 end
--- AUTOMATIC FARM ENGINE (Max 30 Studs Distance Teleport Pool Restriction)
+-- OVERHAULED FRAME CANDY ENGINE (Fly Mechanised Translation Core Pool Restrictions)
 local function setCoinFarm(enabled)
 coinFarmEnabled = enabled
 local farmButton = content:FindFirstChild("CoinFarmButton")
 if farmButton then
-farmButton.Text = enabled and "Auto Farm: ACTIVE" or "Candy/Coin Auto-Farm: OFF"
+farmButton.Text = enabled and "Frame Candy: FLY ACTIVE" or "Frame Candy: OFF"
 farmButton.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
 end
 if coinFarmConnection then coinFarmConnection:Disconnect(); coinFarmConnection = nil end
 if enabled then
-coinFarmConnection = RunService.Heartbeat:Connect(function()
-local now = os.clock()
-if now - lastFarmTeleport < farmCooldown then return end
+coinFarmConnection = RunService.Heartbeat:Connect(function(dt)
 local ownChar, _, ownRoot = getParts(localPlayer)
 if not ownRoot then return end
+-- Prevent collisions during active structural sweeps
 for _, part in ipairs(ownChar:GetDescendants()) do
 if part:IsA("BasePart") then part.CanCollide = false end
 end
-local itemsToCollect = {}
+local targetItem = nil
+local closestDist = 30 -- Absolute max range evaluation structural requirement
 for _, obj in ipairs(Workspace:GetDescendants()) do
 if obj:IsA("BasePart") then
 local name = obj.Name:lower()
 if name == "coincontainer" or name == "goldcoin" or name == "candycane" or name == "coin" or name:find("candy") or name:find("token") or obj:FindFirstChild("CoinVisual") then
--- Check distance filter restriction: Must be under or equal to 30 studs max range
 local dist = (ownRoot.Position - obj.Position).Magnitude
-if dist <= 30 then
-table.insert(itemsToCollect, obj)
+if dist <= closestDist then
+closestDist = dist
+targetItem = obj
 end
 end
 end
 end
-if #itemsToCollect > 0 then
-local targetedRandomItem = itemsToCollect[math.random(1, #itemsToCollect)]
-ownRoot.CFrame = targetedRandomItem.CFrame
+if targetItem then
+-- Translate character smoothly via structural Fly mechanics towards item position coordinates
+local direction = (targetItem.Position - ownRoot.Position).Unit
+ownRoot.CFrame = ownRoot.CFrame + (direction * coinFlySpeed * dt)
 ownRoot.AssemblyLinearVelocity = Vector3.zero
-lastFarmTeleport = now
-if firetouchinterest and targetedRandomItem:FindFirstChildOfClass("TouchInterest") then
-firetouchinterest(ownRoot, targetedRandomItem, 0)
-firetouchinterest(ownRoot, targetedRandomItem, 1)
+if firetouchinterest and targetItem:FindFirstChildOfClass("TouchInterest") then
+firetouchinterest(ownRoot, targetItem, 0)
+firetouchinterest(ownRoot, targetItem, 1)
+end
+end
+end)
+end
+end
+-- NEW SHERIFF GUNSHOT KILL AURA MECHANIC
+local function setSheriffAura(enabled)
+sheriffAuraEnabled = enabled
+local auraBtn = content:FindFirstChild("SheriffAuraButton")
+if auraBtn then
+auraBtn.Text = enabled and "Sheriff Aura: ACTIVE" or "Sheriff Kill Aura (Gun): OFF"
+auraBtn.BackgroundColor3 = enabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(45, 70, 120)
+end
+if sheriffAuraConnection then sheriffAuraConnection:Disconnect(); sheriffAuraConnection = nil end
+if enabled then
+sheriffAuraConnection = RunService.Heartbeat:Connect(function()
+local ownChar, ownHum, ownRoot = getParts(localPlayer)
+if not ownRoot or not ownHum then return end
+local gun = ownChar:FindFirstChild("Gun") or ownChar:FindFirstChild("Revolver") or (localPlayer:FindFirstChild("Backpack") and (localPlayer.Backpack:FindFirstChild("Gun") or localPlayer.Backpack:FindFirstChild("Revolver")))
+if not gun then return end
+if gun.Parent ~= ownChar then gun.Parent = ownChar end
+for _, player in ipairs(Players:GetPlayers()) do
+if player ~= localPlayer then
+local _, targetHum, targetRoot = getParts(player)
+if targetRoot and targetHum and targetHum.Health > 0 then
+-- Check if player is holding or has a Knife container asset verified
+local isMurd = player.Character and player.Character:FindFirstChild("Knife") or (player:FindFirstChild("Backpack") and player.Backpack:FindFirstChild("Knife"))
+if isMurd then
+Workspace.CurrentCamera.CFrame = CFrame.lookAt(Workspace.CurrentCamera.CFrame.Position, targetRoot.Position)
+gun:Activate()
+break
+end
+end
 end
 end
 end)
@@ -781,7 +831,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -98, 1, 0)
 title.Position = UDim2.fromOffset(13, 0)
 title.BackgroundTransparency = 1
-title.Text = "MURDER MYSTERY  •  VIP OVERLORD MYTHIC V13"
+title.Text = "MURDER MYSTERY  •  VIP OVERLORD MYTHIC V14"
 title.TextColor3 = Color3.fromRGB(245, 247, 255)
 title.TextSize = 13
 title.Font = Enum.Font.GothamBold
@@ -816,7 +866,7 @@ content.BackgroundTransparency = 1
 content.BorderSizePixel = 0
 content.ScrollBarThickness = 5
 content.ScrollBarImageColor3 = Color3.fromRGB(75, 135, 255)
-content.CanvasSize = UDim2.fromOffset(0, 1480)
+content.CanvasSize = UDim2.fromOffset(0, 1550)
 content.Parent = main
 status = Instance.new("TextLabel")
 status.Size = UDim2.new(1, -24, 0, 24)
@@ -888,12 +938,27 @@ local scanToolsButton = makeButton("ScanTools", "Perform Role Assessment Scan", 
 makeLabel("AUTOMATION SYSTEMS & AIMBOT SUPER MATRIX", 175)
 local aimbotButton = makeButton("AimbotButton", "Lock Camera View (Aim Lock): OFF", 12, 195, 250, 28, Color3.fromRGB(150, 45, 45))
 local aimbotBoneButton = makeButton("AimbotBoneButton", "Target Bone: Head", 268, 195, 140, 28, Color3.fromRGB(70, 80, 110))
-local hitboxButton = makeButton("HitboxButton", "Hitbox Multiplier Master: OFF", 12, 226, 194, 26)
-local killauraButton = makeButton("KillauraButton", "Kill Aura (Knife Attack): OFF", 216, 226, 192, 26)
-makeLabel("MY CHARACTER PHYSICAL SCALE ENGINE", 260)
+-- UPGRADED HITBOX CONFIGURATION BLOCKS
+local hitboxMultiplierInput = Instance.new("TextBox")
+hitboxMultiplierInput.Size = UDim2.fromOffset(55, 26)
+hitboxMultiplierInput.Position = UDim2.fromOffset(12, 226)
+hitboxMultiplierInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
+hitboxMultiplierInput.Text = "15.0"
+hitboxMultiplierInput.TextColor3 = Color3.new(1, 1, 1)
+hitboxMultiplierInput.TextSize = 12
+hitboxMultiplierInput.Font = Enum.Font.Gotham
+hitboxMultiplierInput.ClearTextOnFocus = false
+hitboxMultiplierInput.Parent = content
+Instance.new("UICorner", hitboxMultiplierInput).CornerRadius = UDim.new(0, 6)
+local applyHitboxBtn = makeButton("ApplyHitboxBtn", "Set Mult (0.5x-100x)", 71, 226, 135, 26, Color3.fromRGB(60, 65, 85))
+local hitboxButton = makeButton("HitboxButton", "Hitbox Master: OFF", 212, 226, 196, 26)
+-- MURDERER KILL AURA WITH POLICE ALERTS CONFIG
+local killauraButton = makeButton("KillauraButton", "Kill Aura (Knife): OFF", 12, 256, 194, 26)
+local policeAlertsButton = makeButton("PoliceAlertsButton", "Police Alerts: OFF", 212, 256, 196, 26, Color3.fromRGB(130, 80, 40))
+makeLabel("MY CHARACTER PHYSICAL SCALE ENGINE", 290)
 local scaleInput = Instance.new("TextBox")
 scaleInput.Size = UDim2.fromOffset(70, 26)
-scaleInput.Position = UDim2.fromOffset(12, 280)
+scaleInput.Position = UDim2.fromOffset(12, 310)
 scaleInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
 scaleInput.Text = "2.0"
 scaleInput.TextColor3 = Color3.new(1, 1, 1)
@@ -902,23 +967,23 @@ scaleInput.Font = Enum.Font.Gotham
 scaleInput.ClearTextOnFocus = false
 scaleInput.Parent = content
 Instance.new("UICorner", scaleInput).CornerRadius = UDim.new(0, 6)
-local applyScaleBtn = makeButton("ApplyScaleBtn", "Scale My Size", 86, 280, 120, 26, Color3.fromRGB(90, 50, 140))
-local knockPlayerBtn = makeButton("KnockPlayerBtn", "💥 Knock Selected Target", 212, 280, 196, 26, Color3.fromRGB(180, 70, 40))
-makeLabel("SERVER NAVIGATION & MAP TELEPORTS", 315)
-local tpMurdererBtn = makeButton("TpMurderer", "Teleport to Murderer", 12, 335, 194, 26, Color3.fromRGB(130, 35, 35))
-local tpSheriffBtn = makeButton("TpSheriff", "Teleport to Sheriff", 216, 335, 192, 26, Color3.fromRGB(35, 85, 160))
-local tpSafeZoneBtn = makeButton("TpSafeZone", "⚡ Teleport to Safe Zone", 12, 365, 396, 26, Color3.fromRGB(110, 45, 165))
-local hopServerBtn = makeButton("ServerHop", "Server Hop (New Instance)", 12, 395, 194, 26)
-local rejoinBtn = makeButton("RejoinServer", "Rejoin Current Server", 216, 395, 192, 26)
-makeLabel("WEAPON DETECTOR & DROPPED ITEM RECOVERY", 430)
-local wList = makeList("WeaponsList", 12, 450, 194, 90)
-local refreshWeaponsButton = makeButton("FindWeapons", "Scan Map for Items", 216, 450, 192, 26)
-local teleportWeaponButton = makeButton("TeleportWeapon", "Teleport & Grab Weapon", 216, 479, 192, 26, Color3.fromRGB(35, 125, 83))
-local autoWeaponButton = makeButton("AutoWeaponButton", "Auto Collect Gun: OFF", 216, 508, 192, 26)
-makeLabel("MOVEMENT CONFIGURATIONS & NO-CLIP MATRIX", 550)
+local applyScaleBtn = makeButton("ApplyScaleBtn", "Scale My Size", 86, 310, 120, 26, Color3.fromRGB(90, 50, 140))
+local knockPlayerBtn = makeButton("KnockPlayerBtn", "💥 Knock Selected Target", 212, 310, 196, 26, Color3.fromRGB(180, 70, 40))
+makeLabel("SERVER NAVIGATION & MAP TELEPORTS", 345)
+local tpMurdererBtn = makeButton("TpMurderer", "Teleport to Murderer", 12, 365, 194, 26, Color3.fromRGB(130, 35, 35))
+local tpSheriffBtn = makeButton("TpSheriff", "Teleport to Sheriff", 216, 365, 192, 26, Color3.fromRGB(35, 85, 160))
+local tpSafeZoneBtn = makeButton("TpSafeZone", "⚡ Teleport to Safe Zone", 12, 395, 396, 26, Color3.fromRGB(110, 45, 165))
+local hopServerBtn = makeButton("ServerHop", "Server Hop (New Instance)", 12, 425, 194, 26)
+local rejoinBtn = makeButton("RejoinServer", "Rejoin Current Server", 216, 425, 192, 26)
+makeLabel("WEAPON DETECTOR & DROPPED ITEM RECOVERY", 460)
+local wList = makeList("WeaponsList", 12, 480, 194, 90)
+local refreshWeaponsButton = makeButton("FindWeapons", "Scan Map for Items", 216, 480, 192, 26)
+local teleportWeaponButton = makeButton("TeleportWeapon", "Teleport & Grab Weapon", 216, 509, 192, 26, Color3.fromRGB(35, 125, 83))
+local autoWeaponButton = makeButton("AutoWeaponButton", "Auto Collect Gun: OFF", 216, 538, 192, 26)
+makeLabel("MOVEMENT CONFIGURATIONS & NO-CLIP MATRIX", 580)
 local speedInput = Instance.new("TextBox")
 speedInput.Size = UDim2.fromOffset(70, 26)
-speedInput.Position = UDim2.fromOffset(12, 570)
+speedInput.Position = UDim2.fromOffset(12, 600)
 speedInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
 speedInput.Text = "32"
 speedInput.TextColor3 = Color3.new(1, 1, 1)
@@ -927,18 +992,17 @@ speedInput.Font = Enum.Font.Gotham
 speedInput.ClearTextOnFocus = false
 speedInput.Parent = content
 Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 6)
-local applySpeedButton = makeButton("SetWalk", "Set Velocity", 86, 570, 66, 26)
-local speedButton = makeButton("SpeedButton", "WalkSpeed Vector: OFF", 156, 570, 124, 26)
-local noClipButton = makeButton("NoClipButton", "Noclip Collision: OFF", 284, 570, 124, 26)
-makeLabel("VISUAL SENSORS & WALLHACK / ESP RADIUS", 605)
-local espButton = makeButton("ESPButton", "Enable Tracking ESP: OFF", 12, 625, 130, 26)
-local namesButton = makeButton("NamesButton", "ESP Names: ON", 146, 625, 134, 26)
-local chamsButton = makeButton("ChamsButton", "ESP Chams: ON", 284, 625, 124, 26)
--- --- UPGRADED FLY ENGINE CONTROLS LAYOUT BLOCK ---
-makeLabel("VIP PERFORMANCE BOOSTER & AUXILIARY CONTROLS", 660)
+local applySpeedButton = makeButton("SetWalk", "Set Velocity", 86, 600, 66, 26)
+local speedButton = makeButton("SpeedButton", "WalkSpeed Vector: OFF", 156, 600, 124, 26)
+local noClipButton = makeButton("NoClipButton", "Noclip Collision: OFF", 284, 600, 124, 26)
+makeLabel("VISUAL SENSORS & WALLHACK / ESP RADIUS", 635)
+local espButton = makeButton("ESPButton", "Enable Tracking ESP: OFF", 12, 655, 130, 26)
+local namesButton = makeButton("NamesButton", "ESP Names: ON", 146, 655, 134, 26)
+local chamsButton = makeButton("ChamsButton", "ESP Chams: ON", 284, 655, 124, 26)
+makeLabel("VIP PERFORMANCE BOOSTER & AUXILIARY CONTROLS", 690)
 local jumpPowerInput = Instance.new("TextBox")
 jumpPowerInput.Size = UDim2.fromOffset(70, 26)
-jumpPowerInput.Position = UDim2.fromOffset(12, 680)
+jumpPowerInput.Position = UDim2.fromOffset(12, 710)
 jumpPowerInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
 jumpPowerInput.Text = "50"
 jumpPowerInput.TextColor3 = Color3.new(1, 1, 1)
@@ -947,12 +1011,11 @@ jumpPowerInput.Font = Enum.Font.Gotham
 jumpPowerInput.ClearTextOnFocus = false
 jumpPowerInput.Parent = content
 Instance.new("UICorner", jumpPowerInput).CornerRadius = UDim.new(0, 6)
-local applyJumpButton = makeButton("SetJump", "Set Jump", 86, 680, 66, 26)
-local airJumpButton = makeButton("AirJumpButton", "Infinite Air Jump: OFF", 156, 680, 252, 26)
--- FIX FOR FLY SPEED TUNER STRUCTURE
+local applyJumpButton = makeButton("SetJump", "Set Jump", 86, 710, 66, 26)
+local airJumpButton = makeButton("AirJumpButton", "Infinite Air Jump: OFF", 156, 710, 252, 26)
 local flySpeedInput = Instance.new("TextBox")
 flySpeedInput.Size = UDim2.fromOffset(70, 26)
-flySpeedInput.Position = UDim2.fromOffset(12, 710)
+flySpeedInput.Position = UDim2.fromOffset(12, 740)
 flySpeedInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
 flySpeedInput.Text = "60"
 flySpeedInput.TextColor3 = Color3.new(1, 1, 1)
@@ -961,12 +1024,12 @@ flySpeedInput.Font = Enum.Font.Gotham
 flySpeedInput.ClearTextOnFocus = false
 flySpeedInput.Parent = content
 Instance.new("UICorner", flySpeedInput).CornerRadius = UDim.new(0, 6)
-local applyFlySpeedButton = makeButton("SetFlySpeed", "Set Fly", 86, 710, 66, 26)
-local flyButton = makeButton("FlyButton", "Fly Navigation Mode: OFF", 156, 710, 252, 26)
-makeLabel("ORBIT ROTATION ENGINES & KINETIC SYSTEMS", 745)
+local applyFlySpeedButton = makeButton("SetFlySpeed", "Set Fly", 86, 740, 66, 26)
+local flyButton = makeButton("FlyButton", "Fly Navigation Mode: OFF", 156, 740, 252, 26)
+makeLabel("ORBIT ROTATION ENGINES & KINETIC SYSTEMS", 775)
 local orbitDistInput = Instance.new("TextBox")
 orbitDistInput.Size = UDim2.fromOffset(70, 26)
-orbitDistInput.Position = UDim2.fromOffset(12, 765)
+orbitDistInput.Position = UDim2.fromOffset(12, 795)
 orbitDistInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
 orbitDistInput.Text = "6"
 orbitDistInput.TextColor3 = Color3.new(1, 1, 1)
@@ -975,11 +1038,11 @@ orbitDistInput.Font = Enum.Font.Gotham
 orbitDistInput.ClearTextOnFocus = false
 orbitDistInput.Parent = content
 Instance.new("UICorner", orbitDistInput).CornerRadius = UDim.new(0, 6)
-local applyOrbitDistButton = makeButton("SetOrbitDist", "Orbit Radial Bounds", 86, 765, 114, 26)
-local orbitButton = makeButton("OrbitButton", "Orbit Target Sequence: OFF", 204, 765, 204, 26)
+local applyOrbitDistButton = makeButton("SetOrbitDist", "Orbit Radial Bounds", 86, 795, 114, 26)
+local orbitButton = makeButton("OrbitButton", "Orbit Target Sequence: OFF", 204, 795, 204, 26)
 local spinInput = Instance.new("TextBox")
 spinInput.Size = UDim2.fromOffset(70, 26)
-spinInput.Position = UDim2.fromOffset(12, 795)
+spinInput.Position = UDim2.fromOffset(12, 825)
 spinInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
 spinInput.Text = "5"
 spinInput.TextColor3 = Color3.new(1, 1, 1)
@@ -988,41 +1051,42 @@ spinInput.Font = Enum.Font.Gotham
 spinInput.ClearTextOnFocus = false
 spinInput.Parent = content
 Instance.new("UICorner", spinInput).CornerRadius = UDim.new(0, 6)
-local applySpinButton = makeButton("SetSpin", "Set RPM", 86, 795, 66, 26)
-local spinButton = makeButton("SpinButton", "Hyper Kinetic Spin Torq: OFF", 156, 795, 252, 26)
-makeLabel("ULTRA DISRUPTOR MECHANICS & V13 PROTECTION", 830)
-local coinFarmButton = makeButton("CoinFarmButton", "Candy/Coin Auto-Farm: OFF", 12, 850, 194, 26)
-local farmDelayInput = Instance.new("TextBox")
-farmDelayInput.Size = UDim2.fromOffset(50, 26)
-farmDelayInput.Position = UDim2.fromOffset(216, 850)
-farmDelayInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
-farmDelayInput.Text = "1.5"
-farmDelayInput.TextColor3 = Color3.fromRGB(35, 230, 140)
-farmDelayInput.TextSize = 11
-farmDelayInput.Font = Enum.Font.Code
-farmDelayInput.ClearTextOnFocus = false
-farmDelayInput.Parent = content
-Instance.new("UICorner", farmDelayInput).CornerRadius = UDim.new(0, 6)
-local applyDelayBtn = makeButton("ApplyDelayBtn", "Set Farm Speed (s)", 272, 850, 136, 26, Color3.fromRGB(60, 65, 85))
-local oxygenButton = makeButton("OxygenButton", "Infinite Oxygen Tracker: OFF", 12, 880, 194, 26)
-local shieldButton = makeButton("ShieldButton", "Auto Anti-Knife Shield: OFF", 216, 880, 192, 26)
-local trapButton = makeButton("TrapButton", "Auto Destroy Map Traps: OFF", 12, 910, 194, 26)
-local maxZoomButton = makeButton("MaxZoomButton", "Unlock Max Camera Zoom Bounds", 216, 910, 192, 26)
--- V13 Newly Mounted Elements
-local antiDieButton = makeButton("AntiDieButton", "Anti-Die Hub Mode: OFF", 12, 940, 194, 26, Color3.fromRGB(150, 50, 100))
-local fakeLagButton = makeButton("FakeLagButton", "Fake Lag Loop: OFF", 216, 940, 192, 26)
-local fovButton = makeButton("FovButton", "Field of View Optics: 70", 12, 970, 194, 26)
-local fullBrightButton = makeButton("FullbrightButton", "Fullbright System: OFF", 216, 970, 192, 26)
-makeLabel("OVERLORD MATRIX PRO SYSTEM FEATURES V13", 1010)
-local autoKillMurdButton = makeButton("AutoKillMurdButton", "Auto Grab & Kill Murderer: OFF", 12, 1030, 240, 28, Color3.fromRGB(150, 45, 45))
-local gunBeamButton = makeButton("GunBeamButton", "Dropped Gun ESP Beam: OFF", 258, 1030, 150, 28)
-local wallWalkhackButton = makeButton("WallWalkhackButton", "Invisible Wall Walkhack: OFF", 12, 1062, 194, 26)
-local antiRagdollButton = makeButton("AntiRagdollButton", "Anti-Ragdoll Physics Anchor: OFF", 212, 1062, 196, 26, Color3.fromRGB(90, 50, 140))
--- V13 CHAT EXPLOIT MODULES
-makeLabel("MYTHIC SERVER CHAT CONTROLS & SPAMMERS", 1100)
-local toxicSpamButton = makeButton("ToxicSpamButton", "Toxic Chat Spammer Loop: OFF", 12, 1120, 396, 28, Color3.fromRGB(175, 95, 30))
-makeLabel("TELEMETRY LOGS & COMPREHENSIVE RECON DATA", 1160)
-local results = makeList("Results", 12, 1180, 396, 120)
+local applySpinButton = makeButton("SetSpin", "Set RPM", 86, 825, 66, 26)
+local spinButton = makeButton("SpinButton", "Hyper Kinetic Spin Torq: OFF", 156, 825, 252, 26)
+makeLabel("ULTRA DISRUPTOR MECHANICS & V14 PROTECTION", 860)
+local coinFarmButton = makeButton("CoinFarmButton", "Frame Candy: OFF", 12, 880, 194, 26)
+local farmFlySpeedInput = Instance.new("TextBox")
+farmFlySpeedInput.Size = UDim2.fromOffset(50, 26)
+farmFlySpeedInput.Position = UDim2.fromOffset(216, 880)
+farmFlySpeedInput.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
+farmFlySpeedInput.Text = "50"
+farmFlySpeedInput.TextColor3 = Color3.fromRGB(35, 230, 140)
+farmFlySpeedInput.TextSize = 11
+farmFlySpeedInput.Font = Enum.Font.Code
+farmFlySpeedInput.ClearTextOnFocus = false
+farmFlySpeedInput.Parent = content
+Instance.new("UICorner", farmFlySpeedInput).CornerRadius = UDim.new(0, 6)
+local applyFarmSpeedBtn = makeButton("ApplyFarmSpeedBtn", "Set Candy Fly Vel", 272, 880, 136, 26, Color3.fromRGB(60, 65, 85))
+local oxygenButton = makeButton("OxygenButton", "Infinite Oxygen Tracker: OFF", 12, 910, 194, 26)
+local shieldButton = makeButton("ShieldButton", "Auto Anti-Knife Shield: OFF", 216, 910, 192, 26)
+local trapButton = makeButton("TrapButton", "Auto Destroy Map Traps: OFF", 12, 940, 194, 26)
+local maxZoomButton = makeButton("MaxZoomButton", "Unlock Max Camera Zoom Bounds", 216, 940, 192, 26)
+-- V14 Newly Mounted Elements
+local antiDieButton = makeButton("AntiDieButton", "Anti-Die Hub Mode: OFF", 12, 970, 194, 26, Color3.fromRGB(150, 50, 100))
+local fakeLagButton = makeButton("FakeLagButton", "Fake Lag Loop: OFF", 216, 970, 192, 26)
+local fovButton = makeButton("FovButton", "Field of View Optics: 70", 12, 1000, 194, 26)
+local fullBrightButton = makeButton("FullbrightButton", "Fullbright System: OFF", 216, 1000, 192, 26)
+makeLabel("OVERLORD MATRIX PRO SYSTEM FEATURES V14", 1040)
+local autoKillMurdButton = makeButton("AutoKillMurdButton", "Auto Grab & Kill Murderer: OFF", 12, 1060, 194, 28, Color3.fromRGB(150, 45, 45))
+local sheriffAuraButton = makeButton("SheriffAuraButton", "Sheriff Kill Aura (Gun): OFF", 212, 1060, 196, 28, Color3.fromRGB(35, 90, 150))
+local gunBeamButton = makeButton("GunBeamButton", "Dropped Gun ESP Beam: OFF", 12, 1092, 194, 28)
+local wallWalkhackButton = makeButton("WallWalkhackButton", "Invisible Wall Walkhack: OFF", 212, 1092, 196, 28)
+local antiRagdollButton = makeButton("AntiRagdollButton", "Anti-Ragdoll Physics Anchor: OFF", 12, 1124, 396, 26, Color3.fromRGB(90, 50, 140))
+-- V14 CHAT EXPLOIT MODULES
+makeLabel("MYTHIC SERVER CHAT CONTROLS & SPAMMERS", 1165)
+local toxicSpamButton = makeButton("ToxicSpamButton", "Toxic Chat Spammer Loop: OFF", 12, 1185, 396, 28, Color3.fromRGB(175, 95, 30))
+makeLabel("TELEMETRY LOGS & COMPREHENSIVE RECON DATA", 1225)
+local results = makeList("Results", 12, 1245, 396, 120)
 -- Runtime Pipeline Initialization
 local function setAimbot(enabled)
 aimbotEnabled = enabled
@@ -1345,8 +1409,23 @@ setAimbot(false)
 setAimbot(true)
 end
 end))
+-- DYNAMIC VALUE HITBOX ENTRY EVENT LISTENERS
+addConnection(applyHitboxBtn.Activated:Connect(function()
+local val = tonumber(hitboxMultiplierInput.Text)
+if val then
+hitboxSizeMultiplier = math.clamp(val, 0.5, 100.0)
+hitboxMultiplierInput.Text = string.format("%.1f", hitboxSizeMultiplier)
+status.Text = "Hitbox Multiplier factor updated: " .. hitboxSizeMultiplier .. "x"
+if hitboxEnabled then updateHitboxes() end
+end
+end))
 addConnection(hitboxButton.Activated:Connect(function() setHitbox(not hitboxEnabled) end))
 addConnection(killauraButton.Activated:Connect(function() setKillaura(not killauraEnabled) end))
+addConnection(policeAlertsButton.Activated:Connect(function()
+policeAlertsEnabled = not policeAlertsEnabled
+policeAlertsButton.Text = policeAlertsEnabled and "Police Alerts: ON" or "Police Alerts: OFF"
+policeAlertsButton.BackgroundColor3 = policeAlertsEnabled and Color3.fromRGB(35, 125, 83) or Color3.fromRGB(130, 80, 40)
+end))
 addConnection(scanToolsButton.Activated:Connect(scanPlayerWeapons))
 addConnection(refreshWeaponsButton.Activated:Connect(refreshWeapons))
 addConnection(teleportWeaponButton.Activated:Connect(function()
@@ -1356,12 +1435,12 @@ if pos then teleportTo(pos) end
 end))
 addConnection(autoWeaponButton.Activated:Connect(function() setAutoWeapon(not autoWeaponEnabled) end))
 addConnection(coinFarmButton.Activated:Connect(function() setCoinFarm(not coinFarmEnabled) end))
-addConnection(applyDelayBtn.Activated:Connect(function()
-local val = tonumber(farmDelayInput.Text)
+addConnection(applyFarmSpeedBtn.Activated:Connect(function()
+local val = tonumber(farmFlySpeedInput.Text)
 if val then
-farmCooldown = math.clamp(val, 0.1, 10)
-farmDelayInput.Text = tostring(farmCooldown)
-status.Text = "Auto Farm interval set to: " .. farmCooldown .. "s"
+coinFlySpeed = math.clamp(math.floor(val), 5, 300)
+farmFlySpeedInput.Text = tostring(coinFlySpeed)
+status.Text = "Frame Candy flight speed adjusted: " .. coinFlySpeed
 end
 end))
 addConnection(oxygenButton.Activated:Connect(function() setInfiniteOxygen(not infiniteOxygenEnabled) end))
@@ -1423,13 +1502,12 @@ addConnection(namesButton.Activated:Connect(function() setESPNames(not espNamesE
 addConnection(chamsButton.Activated:Connect(function() setESPChams(not espChamsEnabled) end))
 addConnection(applyJumpButton.Activated:Connect(applyJumpPower))
 addConnection(airJumpButton.Activated:Connect(function() setAirJump(not airJumpEnabled) end))
--- TRIGGER ACTIVATED MOUNTING FOR FLY SPEED BOX AND TOGGLE
 addConnection(applyFlySpeedButton.Activated:Connect(function()
 local val = tonumber(flySpeedInput.Text)
 if val then
 flySpeed = math.clamp(math.floor(val), 1, 300)
 flySpeedInput.Text = tostring(flySpeed)
-status.Text = "Core Flight engine cruise velocity adjusted: " .. flySpeed
+status.Text = "Core Flight engine velocity adjusted: " .. flySpeed
 end
 end))
 addConnection(flyButton.Activated:Connect(function() setFly(not flyEnabled) end))
@@ -1459,8 +1537,8 @@ if camera then camera.FieldOfView = currentFOV end
 fovButton.Text = "Field of View Optics: " .. currentFOV
 end))
 addConnection(fullBrightButton.Activated:Connect(function() setFullBright(not fullBrightEnabled) end))
--- V13 Custom Multi-Subscribed Connections
 addConnection(autoKillMurdButton.Activated:Connect(function() setAutoKillMurd(not autoKillMurdEnabled) end))
+addConnection(sheriffAuraButton.Activated:Connect(function() setSheriffAura(not sheriffAuraEnabled) end))
 addConnection(wallWalkhackButton.Activated:Connect(function() setWallWalkhack(not wallWalkhackEnabled) end))
 addConnection(gunBeamButton.Activated:Connect(function()
 gunBeamEnabled = not gunBeamEnabled
@@ -1482,7 +1560,6 @@ end
 end)
 end
 end))
--- TOXIC SERVER CHAT LOOP MECHANIC
 addConnection(toxicSpamButton.Activated:Connect(function()
 toxicSpamEnabled = not toxicSpamEnabled
 toxicSpamButton.Text = toxicSpamEnabled and "Spammer: RUNNING MATRIX" or "Toxic Chat Spammer Loop: OFF"
@@ -1517,13 +1594,6 @@ end
 end)
 end
 end))
--- Native Garbage Collection Optimization Core Loop Thread
-task.spawn(function()
-while task.wait(10) do
-if not running then break end
-collectgarbage("collect")
-end
-end)
 -- Hardware Inputs Mapping Pipeline
 addConnection(UserInputService.JumpRequest:Connect(function()
 if not airJumpEnabled then return end
@@ -1578,3 +1648,4 @@ end))
 refreshPlayers()
 refreshWeapons()
 scanPlayerWeapons()
+print("aa")
